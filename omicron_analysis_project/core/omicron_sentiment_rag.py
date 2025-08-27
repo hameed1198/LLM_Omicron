@@ -27,6 +27,32 @@ try:
 except ImportError:
     OLLAMA_AVAILABLE = False
 
+# Free LLM providers
+try:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    GOOGLE_AVAILABLE = True
+except ImportError:
+    GOOGLE_AVAILABLE = False
+
+try:
+    from langchain_community.llms import HuggingFacePipeline
+    from transformers import pipeline
+    HUGGINGFACE_AVAILABLE = True
+except ImportError:
+    HUGGINGFACE_AVAILABLE = False
+
+try:
+    from langchain_community.llms import Together
+    TOGETHER_AVAILABLE = True
+except ImportError:
+    TOGETHER_AVAILABLE = False
+
+try:
+    from langchain_community.llms import Cohere
+    COHERE_AVAILABLE = True
+except ImportError:
+    COHERE_AVAILABLE = False
+
 # Sentiment analysis imports
 from textblob import TextBlob
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
@@ -44,15 +70,20 @@ class OmicronSentimentRAG:
     """
     
     def __init__(self, csv_path: str, anthropic_api_key: Optional[str] = None, 
-                 openai_api_key: Optional[str] = None, llm_provider: str = "auto"):
+                 openai_api_key: Optional[str] = None, google_api_key: Optional[str] = None,
+                 together_api_key: Optional[str] = None, cohere_api_key: Optional[str] = None,
+                 llm_provider: str = "auto"):
         """
         Initialize the sentiment analysis system.
         
         Args:
             csv_path: Path to the CSV file containing tweet data
-            anthropic_api_key: Anthropic API key for Claude Sonnet
-            openai_api_key: OpenAI API key (for GPT models, GitHub Copilot, etc.)
-            llm_provider: LLM provider to use ("claude", "openai", "ollama", "auto")
+            anthropic_api_key: Anthropic API key for Claude Sonnet (paid)
+            openai_api_key: OpenAI API key (paid, but has free tier)
+            google_api_key: Google Gemini API key (FREE with generous limits)
+            together_api_key: Together AI API key (FREE tier available)
+            cohere_api_key: Cohere API key (FREE tier available)
+            llm_provider: LLM provider to use ("claude", "openai", "google", "together", "cohere", "huggingface", "ollama", "auto")
         """
         self.csv_path = csv_path
         self.df = None
@@ -69,17 +100,20 @@ class OmicronSentimentRAG:
         )
         
         # Initialize LLM based on available API keys and provider preference
-        self.llm = self._initialize_llm(anthropic_api_key, openai_api_key, llm_provider)
+        self.llm = self._initialize_llm(anthropic_api_key, openai_api_key, google_api_key, 
+                                       together_api_key, cohere_api_key, llm_provider)
         
         # Load and preprocess data
         self.load_and_preprocess_data()
         self.create_vector_store()
         self.setup_retrieval_chain()
     
-    def _initialize_llm(self, anthropic_api_key: Optional[str], openai_api_key: Optional[str], 
-                       llm_provider: str):
+    def _initialize_llm(self, anthropic_api_key: Optional[str], openai_api_key: Optional[str],
+                       google_api_key: Optional[str], together_api_key: Optional[str],
+                       cohere_api_key: Optional[str], llm_provider: str):
         """Initialize the appropriate LLM based on available keys and preferences."""
         
+        # 1. Specific provider selection
         if llm_provider == "claude" and anthropic_api_key:
             print("🤖 Initializing Claude Sonnet...")
             return ChatAnthropic(
@@ -88,10 +122,58 @@ class OmicronSentimentRAG:
                 temperature=0.1
             )
         
+        elif llm_provider == "google" and google_api_key and GOOGLE_AVAILABLE:
+            print("🤖 Initializing Google Gemini (FREE)...")
+            try:
+                return ChatGoogleGenerativeAI(
+                    model="gemini-1.5-flash",
+                    google_api_key=google_api_key,
+                    temperature=0.1
+                )
+            except Exception as e:
+                print(f"⚠️ Failed to initialize Google Gemini: {e}")
+                return None
+        
+        elif llm_provider == "together" and together_api_key and TOGETHER_AVAILABLE:
+            print("🤖 Initializing Together AI (FREE tier)...")
+            try:
+                return Together(
+                    model="meta-llama/Llama-2-7b-chat-hf",
+                    together_api_key=together_api_key,
+                    temperature=0.1
+                )
+            except Exception as e:
+                print(f"⚠️ Failed to initialize Together AI: {e}")
+                return None
+        
+        elif llm_provider == "cohere" and cohere_api_key and COHERE_AVAILABLE:
+            print("🤖 Initializing Cohere (FREE tier)...")
+            try:
+                return Cohere(
+                    cohere_api_key=cohere_api_key,
+                    temperature=0.1
+                )
+            except Exception as e:
+                print(f"⚠️ Failed to initialize Cohere: {e}")
+                return None
+        
+        elif llm_provider == "huggingface" and HUGGINGFACE_AVAILABLE:
+            print("🤖 Initializing HuggingFace Local Model (FREE)...")
+            try:
+                # Use a smaller, free local model
+                pipe = pipeline("text-generation", 
+                              model="microsoft/DialoGPT-medium",
+                              return_full_text=False,
+                              max_new_tokens=200)
+                return HuggingFacePipeline(pipeline=pipe)
+            except Exception as e:
+                print(f"⚠️ Failed to initialize HuggingFace: {e}")
+                return None
+        
         elif llm_provider == "openai" and openai_api_key and OPENAI_AVAILABLE:
             print("🤖 Initializing OpenAI GPT...")
             return ChatOpenAI(
-                model="gpt-3.5-turbo",  # You can change to "gpt-4" if you have access
+                model="gpt-3.5-turbo",
                 openai_api_key=openai_api_key,
                 temperature=0.1
             )
@@ -99,37 +181,104 @@ class OmicronSentimentRAG:
         elif llm_provider == "ollama" and OLLAMA_AVAILABLE:
             print("🤖 Initializing Ollama (local)...")
             try:
-                return Ollama(model="llama2")  # You can change to other local models
+                return Ollama(model="llama2")
             except Exception as e:
                 print(f"⚠️ Failed to initialize Ollama: {e}")
                 return None
         
         elif llm_provider == "auto":
-            # Auto-detect best available option
-            if anthropic_api_key:
-                print("🤖 Auto-detected: Using Claude Sonnet...")
-                return ChatAnthropic(
-                    model="claude-3-sonnet-20240229",
-                    anthropic_api_key=anthropic_api_key,
-                    temperature=0.1
-                )
-            elif openai_api_key and OPENAI_AVAILABLE:
-                print("🤖 Auto-detected: Using OpenAI GPT...")
-                return ChatOpenAI(
-                    model="gpt-3.5-turbo",
-                    openai_api_key=openai_api_key,
-                    temperature=0.1
-                )
-            elif OLLAMA_AVAILABLE:
-                print("🤖 Auto-detected: Trying Ollama (local)...")
+            # Auto-detect best available option (prioritize FREE options)
+            print("🔍 Auto-detecting available LLM providers...")
+            
+            # Priority 1: Google Gemini (FREE with generous limits)
+            if google_api_key and GOOGLE_AVAILABLE:
+                print("🤖 Auto-detected: Using Google Gemini (FREE)...")
                 try:
+                    return ChatGoogleGenerativeAI(
+                        model="gemini-1.5-flash",
+                        google_api_key=google_api_key,
+                        temperature=0.1
+                    )
+                except Exception as e:
+                    print(f"⚠️ Failed to initialize Google Gemini: {e}")
+            
+            # Priority 2: Together AI (FREE tier)
+            if together_api_key and TOGETHER_AVAILABLE:
+                print("🤖 Auto-detected: Using Together AI (FREE tier)...")
+                try:
+                    return Together(
+                        model="meta-llama/Llama-2-7b-chat-hf",
+                        together_api_key=together_api_key,
+                        temperature=0.1
+                    )
+                except Exception as e:
+                    print(f"⚠️ Failed to initialize Together AI: {e}")
+            
+            # Priority 3: Cohere (FREE tier)
+            if cohere_api_key and COHERE_AVAILABLE:
+                print("🤖 Auto-detected: Using Cohere (FREE tier)...")
+                try:
+                    return Cohere(
+                        cohere_api_key=cohere_api_key,
+                        temperature=0.1
+                    )
+                except Exception as e:
+                    print(f"⚠️ Failed to initialize Cohere: {e}")
+            
+            # Priority 4: HuggingFace Local (Completely FREE)
+            if HUGGINGFACE_AVAILABLE:
+                print("🤖 Auto-detected: Using HuggingFace Local Model (FREE)...")
+                try:
+                    pipe = pipeline("text-generation", 
+                                  model="microsoft/DialoGPT-medium",
+                                  return_full_text=False,
+                                  max_new_tokens=200)
+                    return HuggingFacePipeline(pipeline=pipe)
+                except Exception as e:
+                    print(f"⚠️ Failed to initialize HuggingFace: {e}")
+            
+            # Priority 5: Ollama (Local, FREE but requires setup)
+            if OLLAMA_AVAILABLE:
+                print("🤖 Auto-detected: Checking Ollama (local, FREE)...")
+                try:
+                    import requests
+                    requests.get("http://localhost:11434/api/tags", timeout=5)
                     return Ollama(model="llama2")
                 except Exception as e:
                     print(f"⚠️ Ollama not available: {e}")
-                    return None
-            else:
-                print("⚠️ No LLM provider available. RAG features will be disabled.")
-                return None
+                    print("💡 To use Ollama: Install from https://ollama.ai and run 'ollama pull llama2'")
+            
+            # Priority 6: Anthropic Claude (PAID)
+            if anthropic_api_key:
+                print("🤖 Auto-detected: Using Claude Sonnet (PAID)...")
+                try:
+                    return ChatAnthropic(
+                        model="claude-3-sonnet-20240229",
+                        anthropic_api_key=anthropic_api_key,
+                        temperature=0.1
+                    )
+                except Exception as e:
+                    print(f"⚠️ Failed to initialize Claude: {e}")
+            
+            # Priority 7: OpenAI (PAID, but has some free credits)
+            if openai_api_key and OPENAI_AVAILABLE:
+                print("🤖 Auto-detected: Using OpenAI GPT (PAID)...")
+                try:
+                    return ChatOpenAI(
+                        model="gpt-3.5-turbo",
+                        openai_api_key=openai_api_key,
+                        temperature=0.1
+                    )
+                except Exception as e:
+                    print(f"⚠️ Failed to initialize OpenAI: {e}")
+            
+            print("⚠️ No LLM provider available. RAG features will be disabled.")
+            print("💡 FREE OPTIONS:")
+            print("   - Google Gemini: Get free API key at https://makersuite.google.com/app/apikey")
+            print("   - Together AI: Get free API key at https://api.together.xyz/")
+            print("   - Cohere: Get free API key at https://dashboard.cohere.ai/")
+            print("   - Ollama: Install locally from https://ollama.ai (no API key needed)")
+            return None
         
         else:
             print(f"⚠️ LLM provider '{llm_provider}' not available or no API key provided.")

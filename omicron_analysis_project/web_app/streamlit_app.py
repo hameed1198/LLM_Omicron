@@ -21,12 +21,28 @@ st.set_page_config(
     layout="wide"
 )
 
-@st.cache_data
+@st.cache_resource
 def load_analyzer():
-    """Load the sentiment analyzer with caching."""
-    api_key = os.getenv('ANTHROPIC_API_KEY')
+    """Load the sentiment analyzer with caching for resources like LLM connections."""
+    # Get API keys for different providers
+    anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
+    openai_api_key = os.getenv('OPENAI_API_KEY')
+    google_api_key = os.getenv('GOOGLE_API_KEY')
+    together_api_key = os.getenv('TOGETHER_API_KEY')
+    cohere_api_key = os.getenv('COHERE_API_KEY')
+    llm_provider = os.getenv('LLM_PROVIDER', 'auto')
+    
     csv_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'omicron_2025.csv')
-    return OmicronSentimentRAG(csv_path, anthropic_api_key=api_key)
+    
+    return OmicronSentimentRAG(
+        csv_path=csv_path,
+        anthropic_api_key=anthropic_api_key,
+        openai_api_key=openai_api_key,
+        google_api_key=google_api_key,
+        together_api_key=together_api_key,
+        cohere_api_key=cohere_api_key,
+        llm_provider=llm_provider
+    )
 
 def main():
     st.title("🦠 Omicron Tweets Sentiment Analysis with RAG")
