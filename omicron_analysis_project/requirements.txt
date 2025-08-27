@@ -12,3 +12,6 @@ scikit-learn
 python-dotenv
 requests
 wordcloud
+# Additional for RAG functionality
+sentence-transformers
+faiss-cpu
