@@ -117,7 +117,7 @@ def initialize_rag_system():
         return None
 
 def overview_page():
-    """Overview page with real data"""
+    """Overview page with real data including timeline and word cloud"""
     st.title("🦠 Omicron Tweets Sentiment Analysis")
     st.markdown("### Analyzing COVID-19 Omicron variant discussions on Twitter")
     
@@ -187,6 +187,113 @@ def overview_page():
                     st.plotly_chart(fig, use_container_width=True)
                 except ImportError:
                     st.bar_chart(pd.Series(sent_data))
+        
+        # Timeline Analysis
+        st.subheader("📈 Timeline Analysis")
+        if 'date' in df.columns:
+            try:
+                # Convert date column to datetime
+                df['date_parsed'] = pd.to_datetime(df['date'], errors='coerce')
+                
+                # Create timeline of tweets
+                timeline_data = df.groupby(df['date_parsed'].dt.date).size().reset_index()
+                timeline_data.columns = ['Date', 'Tweet Count']
+                
+                if len(timeline_data) > 1:
+                    import plotly.express as px
+                    fig = px.line(timeline_data, x='Date', y='Tweet Count', 
+                                title="Daily Tweet Volume")
+                    fig.update_traces(line_color='#1f77b4', line_width=3)
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Sentiment over time
+                    if 'sentiment_label' in df.columns:
+                        st.subheader("📊 Sentiment Over Time")
+                        sentiment_timeline = df.groupby([df['date_parsed'].dt.date, 'sentiment_label']).size().unstack(fill_value=0)
+                        
+                        if not sentiment_timeline.empty:
+                            fig = px.area(sentiment_timeline, 
+                                        title="Sentiment Trends Over Time",
+                                        color_discrete_map={
+                                            'positive': '#2ecc71',
+                                            'neutral': '#95a5a6', 
+                                            'negative': '#e74c3c'
+                                        })
+                            st.plotly_chart(fig, use_container_width=True)
+                
+            except Exception as e:
+                st.warning(f"Could not create timeline visualization: {e}")
+                # Fallback - show basic timeline
+                if 'date' in df.columns:
+                    date_counts = df['date'].value_counts().sort_index()
+                    st.line_chart(date_counts)
+        else:
+            st.info("Date information not available for timeline analysis")
+        
+        # Word Cloud
+        st.subheader("☁️ Word Cloud")
+        try:
+            from wordcloud import WordCloud
+            import matplotlib.pyplot as plt
+            
+            # Get text data
+            if 'text' in df.columns:
+                text_data = ' '.join(df['text'].fillna('').astype(str))
+                
+                # Clean text for word cloud
+                import re
+                # Remove URLs, mentions, hashtags for cleaner word cloud
+                clean_text = re.sub(r'http\S+|www\S+|https\S+', '', text_data, flags=re.MULTILINE)
+                clean_text = re.sub(r'@\w+|#\w+', '', clean_text)
+                clean_text = re.sub(r'[^a-zA-Z\s]', '', clean_text)
+                
+                if clean_text.strip():
+                    # Create word cloud
+                    wordcloud = WordCloud(
+                        width=800, 
+                        height=400, 
+                        background_color='white',
+                        colormap='viridis',
+                        max_words=100,
+                        relative_scaling=0.5,
+                        stopwords=['omicron', 'covid', 'coronavirus', 'pandemic', 'virus']
+                    ).generate(clean_text)
+                    
+                    # Display word cloud
+                    fig, ax = plt.subplots(figsize=(10, 5))
+                    ax.imshow(wordcloud, interpolation='bilinear')
+                    ax.axis('off')
+                    st.pyplot(fig)
+                else:
+                    st.info("Not enough text data to generate word cloud")
+            else:
+                st.warning("Text data not available for word cloud generation")
+                
+        except ImportError:
+            st.warning("Word cloud library not available. Install wordcloud package for visualization.")
+        except Exception as e:
+            st.warning(f"Could not generate word cloud: {e}")
+        
+        # Most Engaging Tweets
+        st.subheader("🔥 Most Viral Tweets")
+        if 'retweets' in df.columns and 'favorites' in df.columns:
+            df['total_engagement'] = df['retweets'] + df['favorites']
+            top_tweets = df.nlargest(5, 'total_engagement')
+            
+            for i, (_, tweet) in enumerate(top_tweets.iterrows(), 1):
+                with st.expander(f"#{i} - {int(tweet['total_engagement']):,} total engagement"):
+                    st.write(f"**@{tweet.get('user_name', 'Unknown')}**")
+                    st.write(tweet.get('text', ''))
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Retweets", int(tweet.get('retweets', 0)))
+                    with col2:
+                        st.metric("Favorites", int(tweet.get('favorites', 0)))
+                    with col3:
+                        if 'sentiment_label' in tweet:
+                            sentiment_emoji = {'positive': '😊', 'negative': '😟', 'neutral': '😐'}
+                            emoji = sentiment_emoji.get(tweet['sentiment_label'], '😐')
+                            st.metric("Sentiment", f"{emoji} {tweet['sentiment_label']}")
         
         # Show sample data
         st.subheader("📝 Sample Tweets")
