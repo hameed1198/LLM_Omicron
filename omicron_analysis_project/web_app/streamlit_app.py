@@ -61,6 +61,12 @@ def load_analyzer():
     """Load the sentiment analyzer with caching for resources like LLM connections."""
     csv_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'omicron_2025.csv')
     
+    # Check if CSV file exists
+    if not os.path.exists(csv_path):
+        st.error(f"❌ Data file not found at: {csv_path}")
+        st.info("Please ensure the data file exists in the repository.")
+        return None
+    
     if CORE_MODULE_AVAILABLE:
         st.info("🤖 Loading advanced RAG-powered analyzer...")
         # Get API keys for different providers
@@ -82,8 +88,8 @@ def load_analyzer():
                 llm_provider=llm_provider
             )
         except Exception as e:
-            st.warning(f"Failed to load advanced analyzer: {e}")
-            st.info("Falling back to simple analyzer...")
+            st.warning(f"⚠️ Failed to load advanced analyzer: {e}")
+            st.info("🔄 Falling back to simple analyzer...")
     
     if SIMPLE_ANALYZER_AVAILABLE:
         st.info("📊 Loading simple sentiment analyzer...")
@@ -103,7 +109,15 @@ def main():
     # Check if any analyzer is available
     if not CORE_MODULE_AVAILABLE and not SIMPLE_ANALYZER_AVAILABLE:
         st.error("No analysis modules are available due to missing dependencies.")
-        st.error("Please check the deployment logs and ensure requirements are installed.")
+        st.info("Please check the deployment logs and ensure requirements are installed.")
+        
+        # Show demo data instead
+        st.header("📊 Demo Mode")
+        try:
+            from demo_data import show_demo_data
+            show_demo_data()
+        except:
+            st.write("Demo data not available either.")
         st.stop()
     
     # Load analyzer
@@ -111,7 +125,15 @@ def main():
         analyzer = load_analyzer()
     
     if analyzer is None:
-        st.error("Failed to load any analysis system. Please check the configuration.")
+        st.error("Failed to load analysis system.")
+        st.info("Showing demo data instead...")
+        
+        # Show demo data as fallback
+        try:
+            from demo_data import show_demo_data
+            show_demo_data()
+        except Exception as e:
+            st.error(f"Demo data also failed: {e}")
         st.stop()
     
     # Show analyzer type

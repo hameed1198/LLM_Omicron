@@ -1,37 +1,12 @@
-# Streamlit Cloud Compatible Requirements
-# Core web framework
+# Minimal Streamlit Cloud Requirements
 streamlit==1.28.2
-
-# Data processing
 pandas==1.5.3
 numpy==1.24.3
-
-# Visualization
 plotly==5.15.0
 matplotlib==3.7.2
 wordcloud==1.9.2
-
-# Sentiment analysis
 textblob==0.17.1
 vaderSentiment==3.3.2
-
-# LangChain core (minimal versions for compatibility)
-langchain==0.0.352
-langchain-community==0.0.13
-langchain-core==0.1.3
-langchain-google-genai==0.0.11
-
-# Vector store and embeddings
-faiss-cpu==1.7.4
-sentence-transformers==2.2.2
-
-# API clients
-openai==1.6.1
-anthropic==0.8.1
-
-# Environment
 python-dotenv==1.0.0
-
-# Essential utilities
 requests==2.31.0
-tqdm==4.66.1
+scikit-learn==1.3.0
