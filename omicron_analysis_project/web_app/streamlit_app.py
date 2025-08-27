@@ -30,14 +30,24 @@ except ImportError as e:
 # Import core module with error handling
 try:
     from omicron_sentiment_rag import OmicronSentimentRAG
+    CORE_MODULE_AVAILABLE = True
 except ImportError as e:
-    st.error(f"Failed to import core module: {e}")
-    st.stop()
+    print(f"Advanced RAG module not available: {e}")
+    CORE_MODULE_AVAILABLE = False
 
-from dotenv import load_dotenv
+# Fallback to simple analyzer
+try:
+    from simple_sentiment_analyzer import SimpleSentimentAnalyzer
+    SIMPLE_ANALYZER_AVAILABLE = True
+except ImportError as e:
+    print(f"Simple analyzer not available: {e}")
+    SIMPLE_ANALYZER_AVAILABLE = False
 
-# Load environment variables
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    st.warning("python-dotenv not available, using environment variables directly")
 
 # Configure Streamlit page
 st.set_page_config(
@@ -49,33 +59,64 @@ st.set_page_config(
 @st.cache_resource
 def load_analyzer():
     """Load the sentiment analyzer with caching for resources like LLM connections."""
-    # Get API keys for different providers
-    anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
-    openai_api_key = os.getenv('OPENAI_API_KEY')
-    google_api_key = os.getenv('GOOGLE_API_KEY')
-    together_api_key = os.getenv('TOGETHER_API_KEY')
-    cohere_api_key = os.getenv('COHERE_API_KEY')
-    llm_provider = os.getenv('LLM_PROVIDER', 'auto')
-    
     csv_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'omicron_2025.csv')
     
-    return OmicronSentimentRAG(
-        csv_path=csv_path,
-        anthropic_api_key=anthropic_api_key,
-        openai_api_key=openai_api_key,
-        google_api_key=google_api_key,
-        together_api_key=together_api_key,
-        cohere_api_key=cohere_api_key,
-        llm_provider=llm_provider
-    )
+    if CORE_MODULE_AVAILABLE:
+        st.info("🤖 Loading advanced RAG-powered analyzer...")
+        # Get API keys for different providers
+        anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
+        openai_api_key = os.getenv('OPENAI_API_KEY')
+        google_api_key = os.getenv('GOOGLE_API_KEY')
+        together_api_key = os.getenv('TOGETHER_API_KEY')
+        cohere_api_key = os.getenv('COHERE_API_KEY')
+        llm_provider = os.getenv('LLM_PROVIDER', 'auto')
+        
+        try:
+            return OmicronSentimentRAG(
+                csv_path=csv_path,
+                anthropic_api_key=anthropic_api_key,
+                openai_api_key=openai_api_key,
+                google_api_key=google_api_key,
+                together_api_key=together_api_key,
+                cohere_api_key=cohere_api_key,
+                llm_provider=llm_provider
+            )
+        except Exception as e:
+            st.warning(f"Failed to load advanced analyzer: {e}")
+            st.info("Falling back to simple analyzer...")
+    
+    if SIMPLE_ANALYZER_AVAILABLE:
+        st.info("📊 Loading simple sentiment analyzer...")
+        try:
+            return SimpleSentimentAnalyzer(csv_path=csv_path)
+        except Exception as e:
+            st.error(f"Failed to load simple analyzer: {e}")
+            return None
+    else:
+        st.error("No analyzer available. Please check the deployment.")
+        return None
 
 def main():
     st.title("🦠 Omicron Tweets Sentiment Analysis with RAG")
-    st.markdown("### Analyzing COVID-19 Omicron variant discussions on Twitter using LangChain and Claude Sonnet")
+    st.markdown("### Analyzing COVID-19 Omicron variant discussions on Twitter using AI")
+    
+    # Check if any analyzer is available
+    if not CORE_MODULE_AVAILABLE and not SIMPLE_ANALYZER_AVAILABLE:
+        st.error("No analysis modules are available due to missing dependencies.")
+        st.error("Please check the deployment logs and ensure requirements are installed.")
+        st.stop()
     
     # Load analyzer
-    with st.spinner("Loading data and initializing AI models..."):
+    with st.spinner("Loading data and initializing analysis system..."):
         analyzer = load_analyzer()
+    
+    if analyzer is None:
+        st.error("Failed to load any analysis system. Please check the configuration.")
+        st.stop()
+    
+    # Show analyzer type
+    analyzer_type = "Advanced RAG" if CORE_MODULE_AVAILABLE and hasattr(analyzer, 'query_rag') else "Simple"
+    st.sidebar.info(f"Using {analyzer_type} Analyzer")
     
     # Sidebar
     st.sidebar.title("Navigation")

@@ -1,56 +1,37 @@
-# Core dependencies for Omicron Sentiment Analysis with RAG
-# Data processing and analysis
-pandas==2.1.4
+# Streamlit Cloud Compatible Requirements
+# Core web framework
+streamlit==1.28.2
+
+# Data processing
+pandas==1.5.3
 numpy==1.24.3
-scikit-learn==1.3.2
 
-# LangChain framework and components
-langchain==0.1.20
-langchain-anthropic==0.1.15
-langchain-openai==0.1.9
-langchain-community==0.0.38
-langchain-core==0.1.52
-langchain-text-splitters==0.0.3
+# Visualization
+plotly==5.15.0
+matplotlib==3.7.2
+wordcloud==1.9.2
 
-# FREE LLM Providers
-langchain-google-genai==1.0.7      # Google Gemini (FREE) - Compatible version
-together==0.2.11                   # Together AI (FREE tier)
-cohere==4.39                       # Cohere (FREE tier)
+# Sentiment analysis
+textblob==0.17.1
+vaderSentiment==3.3.2
+
+# LangChain core (minimal versions for compatibility)
+langchain==0.0.352
+langchain-community==0.0.13
+langchain-core==0.1.3
+langchain-google-genai==0.0.11
 
 # Vector store and embeddings
 faiss-cpu==1.7.4
 sentence-transformers==2.2.2
-transformers==4.35.2
-torch==2.1.1
 
-# Sentiment analysis libraries
-textblob==0.17.1
-vaderSentiment==3.3.2
-nltk==3.8.1
+# API clients
+openai==1.6.1
+anthropic==0.8.1
 
-# API clients (paid options)
-anthropic==0.7.8                   # Claude Sonnet (PAID)
-openai==1.3.9                      # OpenAI GPT (PAID)
-
-# Environment and configuration
+# Environment
 python-dotenv==1.0.0
 
-# Web interface (Streamlit)
-streamlit==1.28.2
-
-# Visualization - CRITICAL for Streamlit deployment
-plotly==5.17.0
-matplotlib==3.7.2
-seaborn==0.12.2
-wordcloud==1.9.2
-
-# Utilities
+# Essential utilities
 requests==2.31.0
 tqdm==4.66.1
-pydantic==2.5.2
-PyYAML==6.0.1
-
-# Additional dependencies for Streamlit Cloud compatibility
-protobuf==3.20.3
-typing-extensions==4.8.0
-grpcio==1.59.3

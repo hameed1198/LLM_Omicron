@@ -4,17 +4,28 @@ from typing import List, Dict, Any, Optional
 import ast
 import re
 from pathlib import Path
+import os
 
-# LangChain imports
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain.schema import Document
-from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
-from langchain_anthropic import ChatAnthropic
+# Core imports with error handling
+try:
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
+    from langchain_community.vectorstores import FAISS
+    from langchain_community.embeddings import HuggingFaceEmbeddings
+    from langchain.schema import Document
+    from langchain.chains import RetrievalQA
+    from langchain.prompts import PromptTemplate
+    LANGCHAIN_AVAILABLE = True
+except ImportError as e:
+    print(f"LangChain not available: {e}")
+    LANGCHAIN_AVAILABLE = False
 
-# Additional LLM providers
+# LLM providers with fallbacks
+try:
+    from langchain_anthropic import ChatAnthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    ANTHROPIC_AVAILABLE = False
+
 try:
     from langchain_openai import ChatOpenAI
     OPENAI_AVAILABLE = True
@@ -22,32 +33,16 @@ except ImportError:
     OPENAI_AVAILABLE = False
 
 try:
-    from langchain_community.llms import Ollama
-    OLLAMA_AVAILABLE = True
-except ImportError:
-    OLLAMA_AVAILABLE = False
-
-# Free LLM providers
-try:
     from langchain_google_genai import ChatGoogleGenerativeAI
     GOOGLE_AVAILABLE = True
 except ImportError:
     GOOGLE_AVAILABLE = False
 
 try:
-    from langchain_community.llms import HuggingFacePipeline
-    from transformers import pipeline
-    HUGGINGFACE_AVAILABLE = True
+    from langchain_community.llms import Ollama
+    OLLAMA_AVAILABLE = True
 except ImportError:
-    HUGGINGFACE_AVAILABLE = False
-
-try:
-    from langchain_community.llms import Together
-    TOGETHER_AVAILABLE = True
-except ImportError:
-    TOGETHER_AVAILABLE = False
-
-try:
+    OLLAMA_AVAILABLE = False
     from langchain_community.llms import Cohere
     COHERE_AVAILABLE = True
 except ImportError:
