@@ -1,12 +1,27 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-from wordcloud import WordCloud
-import matplotlib.pyplot as plt
 import sys
 import os
+
+# Add core module to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core'))
+
+# Import visualization libraries with error handling
+try:
+    import plotly.express as px
+    import plotly.graph_objects as go
+    PLOTLY_AVAILABLE = True
+except ImportError as e:
+    st.error(f"Plotly not available: {e}")
+    PLOTLY_AVAILABLE = False
+
+try:
+    from wordcloud import WordCloud
+    import matplotlib.pyplot as plt
+    WORDCLOUD_AVAILABLE = True
+except ImportError as e:
+    st.warning(f"WordCloud not available: {e}")
+    WORDCLOUD_AVAILABLE = False
 
 from omicron_sentiment_rag import OmicronSentimentRAG
 from dotenv import load_dotenv
@@ -101,12 +116,18 @@ def show_overview(analyzer):
     st.subheader("Sentiment Distribution")
     sentiment_data = analyzer.analyze_sentiment_distribution()
     
-    fig_pie = px.pie(
-        values=list(sentiment_data['sentiment_distribution'].values()),
-        names=list(sentiment_data['sentiment_distribution'].keys()),
-        title="Tweet Sentiment Distribution"
-    )
-    st.plotly_chart(fig_pie, use_container_width=True)
+    if PLOTLY_AVAILABLE:
+        fig_pie = px.pie(
+            values=list(sentiment_data['sentiment_distribution'].values()),
+            names=list(sentiment_data['sentiment_distribution'].keys()),
+            title="Tweet Sentiment Distribution"
+        )
+        st.plotly_chart(fig_pie, use_container_width=True)
+    else:
+        # Fallback to simple display
+        st.write("Sentiment Distribution:")
+        for sentiment, count in sentiment_data['sentiment_distribution'].items():
+            st.write(f"- {sentiment}: {count}")
     
     # Timeline analysis
     st.subheader("Tweet Timeline")
@@ -114,25 +135,41 @@ def show_overview(analyzer):
     analyzer.df['date'] = pd.to_datetime(analyzer.df['date'], format='%d-%m-%Y %H:%M', errors='coerce')
     timeline_data = analyzer.df.groupby(analyzer.df['date'].dt.date).size()
     
-    fig_timeline = px.line(
-        x=timeline_data.index,
-        y=timeline_data.values,
-        title="Tweets Over Time",
-        labels={'x': 'Date', 'y': 'Number of Tweets'}
-    )
-    st.plotly_chart(fig_timeline, use_container_width=True)
+    if PLOTLY_AVAILABLE:
+        fig_timeline = px.line(
+            x=timeline_data.index,
+            y=timeline_data.values,
+            title="Tweets Over Time",
+            labels={'x': 'Date', 'y': 'Number of Tweets'}
+        )
+        st.plotly_chart(fig_timeline, use_container_width=True)
+    else:
+        # Fallback to simple line chart
+        st.line_chart(timeline_data)
     
     # Word cloud
     st.subheader("Word Cloud")
     if st.button("Generate Word Cloud"):
-        all_text = ' '.join(analyzer.df['clean_text'].dropna())
-        if all_text.strip():
-            wordcloud = WordCloud(width=800, height=400, background_color='white').generate(all_text)
-            
-            fig, ax = plt.subplots(figsize=(10, 5))
-            ax.imshow(wordcloud, interpolation='bilinear')
-            ax.axis('off')
-            st.pyplot(fig)
+        if WORDCLOUD_AVAILABLE:
+            all_text = ' '.join(analyzer.df['clean_text'].dropna())
+            if all_text.strip():
+                wordcloud = WordCloud(width=800, height=400, background_color='white').generate(all_text)
+                
+                fig, ax = plt.subplots(figsize=(10, 5))
+                ax.imshow(wordcloud, interpolation='bilinear')
+                ax.axis('off')
+                st.pyplot(fig)
+            else:
+                st.write("No text available for word cloud generation.")
+        else:
+            st.write("WordCloud library not available. Showing most common words instead:")
+            # Simple text frequency as fallback
+            all_text = ' '.join(analyzer.df['clean_text'].dropna())
+            words = all_text.lower().split()
+            from collections import Counter
+            word_freq = Counter(words).most_common(20)
+            for word, freq in word_freq:
+                st.write(f"- {word}: {freq}")
         else:
             st.warning("No text data available for word cloud generation.")
 
@@ -238,15 +275,19 @@ def show_hashtag_analysis(analyzer):
         df_trending = pd.DataFrame(trending)
         
         # Bar chart
-        fig_bar = px.bar(
-            df_trending.head(10),
-            x='hashtag',
-            y='count',
-            title="Top 10 Hashtags by Frequency",
-            labels={'count': 'Number of Tweets', 'hashtag': 'Hashtag'}
-        )
-        fig_bar.update_xaxes(tickangle=45)
-        st.plotly_chart(fig_bar, use_container_width=True)
+        if PLOTLY_AVAILABLE:
+            fig_bar = px.bar(
+                df_trending.head(10),
+                x='hashtag',
+                y='count',
+                title="Top 10 Hashtags by Frequency",
+                labels={'count': 'Number of Tweets', 'hashtag': 'Hashtag'}
+            )
+            fig_bar.update_xaxes(tickangle=45)
+            st.plotly_chart(fig_bar, use_container_width=True)
+        else:
+            # Fallback to simple bar chart
+            st.bar_chart(df_trending.head(10).set_index('hashtag')['count'])
         
         # Full table
         st.subheader("All Trending Hashtags")
