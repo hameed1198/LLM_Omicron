@@ -1,18 +1,3 @@
 # Streamlit Cloud - Wheel-only packages (no source builds)
 streamlit
 pandas
-numpy
-plotly
-matplotlib
-seaborn
-textblob
-vaderSentiment
-nltk
-scikit-learn
-python-dotenv
-requests
-wordcloud
-
-# Additional utilities
-pydantic==2.5.2
-typing-extensions==4.8.0
