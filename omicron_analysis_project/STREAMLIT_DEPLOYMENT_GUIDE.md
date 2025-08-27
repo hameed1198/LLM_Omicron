@@ -3,8 +3,10 @@
 ## Quick Deployment Steps
 
 ### 1. Repository Setup
-Make sure your repository has:
+Make sure your repository has these files:
 - ✅ `requirements.txt` in the project root (`omicron_analysis_project/`)
+- ✅ `packages.txt` for system dependencies
+- ✅ `.streamlit/config.toml` for Streamlit configuration
 - ✅ Your Streamlit app (`web_app/streamlit_app.py`)
 - ✅ Your data files (`data/omicron_2025.csv`)
 - ✅ Core analysis code (`core/omicron_sentiment_rag.py`)

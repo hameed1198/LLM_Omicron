@@ -3,8 +3,12 @@ import pandas as pd
 import sys
 import os
 
-# Add core module to path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core'))
+# Add core module to path - Make it work for both local and Streamlit Cloud
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+core_dir = os.path.join(parent_dir, 'core')
+sys.path.insert(0, core_dir)
+sys.path.insert(0, parent_dir)
 
 # Import visualization libraries with error handling
 try:
@@ -12,7 +16,7 @@ try:
     import plotly.graph_objects as go
     PLOTLY_AVAILABLE = True
 except ImportError as e:
-    st.error(f"Plotly not available: {e}")
+    st.warning(f"Plotly not available: {e}")
     PLOTLY_AVAILABLE = False
 
 try:
@@ -23,7 +27,13 @@ except ImportError as e:
     st.warning(f"WordCloud not available: {e}")
     WORDCLOUD_AVAILABLE = False
 
-from omicron_sentiment_rag import OmicronSentimentRAG
+# Import core module with error handling
+try:
+    from omicron_sentiment_rag import OmicronSentimentRAG
+except ImportError as e:
+    st.error(f"Failed to import core module: {e}")
+    st.stop()
+
 from dotenv import load_dotenv
 
 # Load environment variables
