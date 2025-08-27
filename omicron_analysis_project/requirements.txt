@@ -1,36 +1,17 @@
-# Streamlit Cloud Compatible Requirements (Python 3.11/3.12 compatible)
-streamlit>=1.28.0,<2.0.0
-pandas>=1.5.0,<2.1.0
-numpy>=1.24.0,<1.26.0
-
-# Visualization (REQUIRED)
-plotly>=5.0.0,<6.0.0
-matplotlib>=3.5.0,<4.0.0
-seaborn>=0.11.0,<1.0.0
-wordcloud>=1.8.0,<2.0.0
-
-# Sentiment Analysis (REQUIRED)
-textblob>=0.17.0,<1.0.0
-vaderSentiment>=3.3.0,<4.0.0
-nltk>=3.8.0,<4.0.0
-
-# Basic ML and Data Processing
-scikit-learn>=1.2.0,<2.0.0
-
-# Environment and Configuration
-python-dotenv>=0.19.0,<2.0.0
-requests>=2.25.0,<3.0.0
-
-# LangChain Essentials (compatible versions)
-langchain>=0.1.0,<0.3.0
-langchain-core>=0.1.0,<0.3.0
-langchain-google-genai>=0.1.0,<2.0.0
-
-# Vector store (simplified)
-sentence-transformers>=2.0.0,<3.0.0
-
-# Python 3.13 compatibility
-setuptools>=65.0.0
+# Streamlit Cloud - Wheel-only packages (no source builds)
+streamlit
+pandas
+numpy
+plotly
+matplotlib
+seaborn
+textblob
+vaderSentiment
+nltk
+scikit-learn
+python-dotenv
+requests
+wordcloud
 
 # Additional utilities
 pydantic==2.5.2
