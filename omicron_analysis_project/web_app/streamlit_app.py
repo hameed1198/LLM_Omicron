@@ -165,13 +165,14 @@ def show_overview(analyzer):
             st.write("WordCloud library not available. Showing most common words instead:")
             # Simple text frequency as fallback
             all_text = ' '.join(analyzer.df['clean_text'].dropna())
-            words = all_text.lower().split()
-            from collections import Counter
-            word_freq = Counter(words).most_common(20)
-            for word, freq in word_freq:
-                st.write(f"- {word}: {freq}")
-        else:
-            st.warning("No text data available for word cloud generation.")
+            if all_text.strip():
+                words = all_text.lower().split()
+                from collections import Counter
+                word_freq = Counter(words).most_common(20)
+                for word, freq in word_freq:
+                    st.write(f"- {word}: {freq}")
+            else:
+                st.warning("No text data available for word cloud generation.")
 
 def show_interactive_query(analyzer):
     """Show interactive query interface."""
