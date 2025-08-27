@@ -212,18 +212,18 @@ def interactive_query_page():
     df = st.session_state.df
     
     # Search functionality
-    search_term = st.text_input("🔍 Search tweets:", placeholder="Enter keywords to search...")
+    search_term = st.text_input("🔍 Search tweets:", placeholder="Enter keywords to search...", key="interactive_search_input")
     
     # Advanced filters
     col1, col2 = st.columns(2)
     
     with col1:
-        sentiment_filter = st.selectbox("Filter by sentiment:", ['All', 'positive', 'negative', 'neutral'])
+        sentiment_filter = st.selectbox("Filter by sentiment:", ['All', 'positive', 'negative', 'neutral'], key="sentiment_filter_select")
     
     with col2:
         if 'user_name' in df.columns:
             users = ['All'] + sorted(df['user_name'].unique().tolist())
-            user_filter = st.selectbox("Filter by user:", users[:100])  # Limit for performance
+            user_filter = st.selectbox("Filter by user:", users[:100], key="user_filter_select")  # Limit for performance
         else:
             user_filter = 'All'
     
@@ -300,7 +300,7 @@ def hashtag_analysis_page():
             
             # Hashtag search
             st.subheader("🔍 Search by Hashtag")
-            selected_hashtag = st.selectbox("Select a hashtag to explore:", [h['hashtag'] for h in trending_hashtags[:10]])
+            selected_hashtag = st.selectbox("Select a hashtag to explore:", [h['hashtag'] for h in trending_hashtags[:10]], key="hashtag_explore_select")
             
             if selected_hashtag and analyzer and hasattr(analyzer, 'query_tweets_by_hashtag'):
                 hashtag_tweets = analyzer.query_tweets_by_hashtag(selected_hashtag)
@@ -376,7 +376,7 @@ def user_analysis_page():
         
         # User selection for detailed analysis
         st.subheader("🔍 Individual User Analysis")
-        selected_user = st.selectbox("Select a user for detailed analysis:", [''] + user_counts.head(20).index.tolist())
+        selected_user = st.selectbox("Select a user for detailed analysis:", [''] + user_counts.head(20).index.tolist(), key="user_analysis_select")
         
         if selected_user:
             user_tweets = df[df['user_name'] == selected_user]
@@ -454,7 +454,7 @@ def sentiment_deep_dive_page():
             # Sample tweets by sentiment
             st.subheader("📝 Sample Tweets by Sentiment")
             
-            sentiment_filter = st.selectbox("Select sentiment:", ['positive', 'negative', 'neutral'])
+            sentiment_filter = st.selectbox("Select sentiment:", ['positive', 'negative', 'neutral'], key="sentiment_sample_select")
             
             if 'sentiment_label' in df.columns:
                 filtered_tweets = df[df['sentiment_label'] == sentiment_filter]
@@ -503,18 +503,19 @@ def rag_chat_page():
         # Predefined example questions
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("What are the top hashtags?"):
+            if st.button("What are the top hashtags?", key="hashtags_question_btn"):
                 st.session_state.user_question = "What are the top trending hashtags in the omicron tweets?"
         
         with col2:
-            if st.button("Show negative sentiment analysis"):
+            if st.button("Show negative sentiment analysis", key="negative_sentiment_btn"):
                 st.session_state.user_question = "Analyze the negative sentiment tweets about omicron. What are people concerned about?"
         
         # User input
         user_question = st.text_input(
             "Ask a question about the omicron tweets:",
             value=st.session_state.get('user_question', ''),
-            placeholder="e.g., Which users are most influential? What are people saying about vaccines?"
+            placeholder="e.g., Which users are most influential? What are people saying about vaccines?",
+            key="rag_question_input"
         )
         
         if user_question:
@@ -538,7 +539,7 @@ def rag_chat_page():
     
     elif RAG_AVAILABLE:
         st.warning("🔄 RAG system not initialized. Click the button below to set it up.")
-        if st.button("Initialize RAG System"):
+        if st.button("Initialize RAG System", key="init_rag_btn"):
             with st.spinner("Setting up RAG system..."):
                 st.session_state.rag_system = initialize_rag_system()
             st.rerun()
@@ -566,7 +567,7 @@ def main():
     st.sidebar.title("🦠 Navigation")
     
     # Load data button
-    if st.sidebar.button("🔄 Load Data", type="primary"):
+    if st.sidebar.button("🔄 Load Data", type="primary", key="load_data_btn"):
         with st.spinner("Loading data..."):
             result = load_data()
         if st.session_state.data_loaded:
@@ -940,7 +941,7 @@ def main():
     }
     
     # Page selection
-    selected_page = st.sidebar.selectbox("Choose a page:", list(pages.keys()))
+    selected_page = st.sidebar.selectbox("Choose a page:", list(pages.keys()), key="page_navigation_select")
     
     # Data status
     if st.session_state.data_loaded:
