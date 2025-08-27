@@ -29,7 +29,7 @@ except ImportError as e:
 
 # Import core module with error handling
 try:
-    from omicron_sentiment_rag import OmicronSentimentRAG
+    from core.omicron_sentiment_rag import OmicronSentimentRAG
     CORE_MODULE_AVAILABLE = True
 except ImportError as e:
     print(f"Advanced RAG module not available: {e}")
@@ -37,7 +37,7 @@ except ImportError as e:
 
 # Fallback to simple analyzer
 try:
-    from simple_sentiment_analyzer import SimpleSentimentAnalyzer
+    from core.simple_sentiment_analyzer import SimpleSentimentAnalyzer
     SIMPLE_ANALYZER_AVAILABLE = True
 except ImportError as e:
     print(f"Simple analyzer not available: {e}")
@@ -157,7 +157,7 @@ def main():
         
         # Show demo data as fallback
         try:
-            from demo_data import show_demo_data
+            from web_app.demo_data import show_demo_data
             show_demo_data()
         except Exception as e:
             st.error(f"Demo data also failed: {e}")
