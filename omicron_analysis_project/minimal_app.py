@@ -1,1295 +1,570 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import os
-import re
 import sys
-from collections import Counter
-from pathlib import Path
+import os
 
-# Add the project root to Python path for imports
-project_root = Path(__file__).parent
-sys.path.append(str(project_root))
-sys.path.append(str(project_root / 'core'))
-sys.path.append(str(project_root / 'analysis_scripts'))
+# Add core module to path - Make it work for both local and Streamlit Cloud
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+core_dir = os.path.join(parent_dir, 'core')
+sys.path.insert(0, core_dir)
+sys.path.insert(0, parent_dir)
 
-# Try to import your existing analysis modules
+# Import visualization libraries with error handling
 try:
-    from core.simple_sentiment_analyzer import SimpleSentimentAnalyzer
-    ANALYZER_AVAILABLE = True
-except ImportError:
-    ANALYZER_AVAILABLE = False
-    st.warning("⚠️ Analysis modules not found. Using basic functionality.")
-
-try:
-    from core.omicron_sentiment_rag import OmicronSentimentRAG
-    RAG_AVAILABLE = True
-except ImportError:
-    RAG_AVAILABLE = False
-
-# Check for additional LLM providers
-try:
-    from langchain_anthropic import ChatAnthropic
-    ANTHROPIC_AVAILABLE = True
-except ImportError:
-    ANTHROPIC_AVAILABLE = False
+    import plotly.express as px
+    import plotly.graph_objects as go
+    PLOTLY_AVAILABLE = True
+except ImportError as e:
+    st.warning(f"Plotly not available: {e}")
+    PLOTLY_AVAILABLE = False
 
 try:
-    from langchain_openai import ChatOpenAI  
-    OPENAI_AVAILABLE = True
-except ImportError:
-    OPENAI_AVAILABLE = False
+    from wordcloud import WordCloud
+    import matplotlib.pyplot as plt
+    WORDCLOUD_AVAILABLE = True
+except ImportError as e:
+    st.warning(f"WordCloud not available: {e}")
+    WORDCLOUD_AVAILABLE = False
+
+# Import core module with error handling
+try:
+    from omicron_sentiment_rag import OmicronSentimentRAG
+    CORE_MODULE_AVAILABLE = True
+except ImportError as e:
+    print(f"Advanced RAG module not available: {e}")
+    CORE_MODULE_AVAILABLE = False
+
+# Fallback to simple analyzer
+try:
+    from simple_sentiment_analyzer import SimpleSentimentAnalyzer
+    SIMPLE_ANALYZER_AVAILABLE = True
+except ImportError as e:
+    print(f"Simple analyzer not available: {e}")
+    SIMPLE_ANALYZER_AVAILABLE = False
 
 try:
-    from langchain_google_genai import ChatGoogleGenerativeAI
-    GOOGLE_AVAILABLE = True  
+    from dotenv import load_dotenv
+    load_dotenv()
 except ImportError:
-    GOOGLE_AVAILABLE = False
+    st.warning("python-dotenv not available, using environment variables directly")
 
-try:
-    from langchain_community.llms import Ollama
-    OLLAMA_AVAILABLE = True
-except ImportError:
-    OLLAMA_AVAILABLE = False
-
-try:
-    from langchain_community.llms import Cohere
-    COHERE_AVAILABLE = True
-except ImportError:
-    COHERE_AVAILABLE = False
-
-# Page config
+# Configure Streamlit page
 st.set_page_config(
-    page_title="Omicron Sentiment Analysis",
+    page_title="Omicron Sentiment Analysis with RAG",
     page_icon="🦠",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# Initialize session state
-if 'data_loaded' not in st.session_state:
-    st.session_state.data_loaded = False
-if 'df' not in st.session_state:
-    st.session_state.df = None
-if 'analyzer' not in st.session_state:
-    st.session_state.analyzer = None
-if 'rag_system' not in st.session_state:
-    st.session_state.rag_system = None
-
-def load_data():
-    """Load the omicron dataset using your existing analyzer"""
-    try:
-        # Look for data file in multiple locations
-        possible_paths = [
-            'omicron_2025.csv',
-            'data/omicron_2025.csv',
-            os.path.join('data', 'omicron_2025.csv'),
-            os.path.join(os.path.dirname(__file__), 'omicron_2025.csv'),
-            os.path.join(os.path.dirname(__file__), 'data', 'omicron_2025.csv')
-        ]
-        
-        csv_path = None
-        for path in possible_paths:
-            if os.path.exists(path):
-                csv_path = path
-                break
-        
-        if csv_path and ANALYZER_AVAILABLE:
-            # Use your existing analyzer
-            analyzer = SimpleSentimentAnalyzer(csv_path)
-            st.session_state.analyzer = analyzer
-            st.session_state.df = analyzer.df
-            st.session_state.data_loaded = True
-            return analyzer.df
-        elif csv_path:
-            # Fallback to basic pandas loading
-            df = pd.read_csv(csv_path)
-            st.session_state.df = df
-            st.session_state.data_loaded = True
-            return df
-        
-        return None
-    except Exception as e:
-        st.error(f"Error loading data: {e}")
-        return None
-
-def initialize_rag_system():
-    """Initialize the RAG system with default Google Gemini model"""
-    return initialize_rag_system_with_model("google", "AIzaSyC9WVZri_Gas_scMlkk-OeveNCkR5LMLCc")
-
-def overview_page():
-    """Overview page with real data including timeline and word cloud"""
-    st.title("🦠 Omicron Tweets Sentiment Analysis")
-    st.markdown("### Analyzing COVID-19 Omicron variant discussions on Twitter")
+@st.cache_resource
+def load_analyzer():
+    """Load the sentiment analyzer with caching for resources like LLM connections."""
+    csv_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'omicron_2025.csv')
     
-    if st.session_state.data_loaded and st.session_state.df is not None:
-        df = st.session_state.df
-        analyzer = st.session_state.analyzer
+    # Check if CSV file exists
+    if not os.path.exists(csv_path):
+        st.error(f"❌ Data file not found at: {csv_path}")
+        st.info("Please ensure the data file exists in the repository.")
+        return None
+    
+    if CORE_MODULE_AVAILABLE:
+        st.info("🤖 Loading advanced RAG-powered analyzer...")
+        # Get API keys for different providers
+        anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
+        openai_api_key = os.getenv('OPENAI_API_KEY')
+        google_api_key = os.getenv('GOOGLE_API_KEY')
+        together_api_key = os.getenv('TOGETHER_API_KEY')
+        cohere_api_key = os.getenv('COHERE_API_KEY')
+        llm_provider = os.getenv('LLM_PROVIDER', 'auto')
         
-        st.success("✅ Data file found!")
-        
-        # Real dataset metrics
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Total Tweets", f"{len(df):,}")
-        
-        with col2:
-            unique_users = df['user_name'].nunique() if 'user_name' in df.columns else len(df['user_name'].unique()) if 'user_name' in df.columns else "N/A"
-            st.metric("Unique Users", unique_users)
-        
-        with col3:
-            if 'date' in df.columns:
-                unique_dates = df['date'].nunique()
-                st.metric("Date Range", f"{unique_dates} days")
-            else:
-                st.metric("Columns", len(df.columns))
-        
-        with col4:
-            if analyzer and hasattr(analyzer, 'analyze_sentiment_distribution'):
-                sentiment_dist = analyzer.analyze_sentiment_distribution()
-                total_analyzed = sentiment_dist.get('total_tweets', len(df))
-                st.metric("Analyzed Tweets", f"{total_analyzed:,}")
-            else:
-                st.metric("Data Points", f"{len(df):,}")
-        
-        # Real sentiment analysis if available
-        if analyzer:
-            st.subheader("😊 Sentiment Analysis Results")
-            sentiment_dist = analyzer.analyze_sentiment_distribution()
-            
-            if 'sentiment_distribution' in sentiment_dist:
-                sent_data = sentiment_dist['sentiment_distribution']
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    positive_count = sent_data.get('positive', 0)
-                    positive_pct = (positive_count / len(df) * 100) if len(df) > 0 else 0
-                    st.metric("Positive", positive_count, f"{positive_pct:.1f}%")
-                
-                with col2:
-                    neutral_count = sent_data.get('neutral', 0)
-                    neutral_pct = (neutral_count / len(df) * 100) if len(df) > 0 else 0
-                    st.metric("Neutral", neutral_count, f"{neutral_pct:.1f}%")
-                
-                with col3:
-                    negative_count = sent_data.get('negative', 0)
-                    negative_pct = (negative_count / len(df) * 100) if len(df) > 0 else 0
-                    st.metric("Negative", negative_count, f"{negative_pct:.1f}%")
-                
-                # Sentiment chart
-                try:
-                    import plotly.express as px
-                    fig = px.pie(
-                        values=list(sent_data.values()), 
-                        names=list(sent_data.keys()),
-                        title="Sentiment Distribution"
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                except ImportError:
-                    st.bar_chart(pd.Series(sent_data))
-        
-        # Timeline Analysis
-        st.subheader("📈 Timeline Analysis")
-        if 'date' in df.columns:
-            try:
-                # Convert date column to datetime
-                df['date_parsed'] = pd.to_datetime(df['date'], errors='coerce')
-                
-                # Create timeline of tweets
-                timeline_data = df.groupby(df['date_parsed'].dt.date).size().reset_index()
-                timeline_data.columns = ['Date', 'Tweet Count']
-                
-                if len(timeline_data) > 1:
-                    import plotly.express as px
-                    fig = px.line(timeline_data, x='Date', y='Tweet Count', 
-                                title="Daily Tweet Volume")
-                    fig.update_traces(line_color='#1f77b4', line_width=3)
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # Sentiment over time
-                    if 'sentiment_label' in df.columns:
-                        st.subheader("📊 Sentiment Over Time")
-                        sentiment_timeline = df.groupby([df['date_parsed'].dt.date, 'sentiment_label']).size().unstack(fill_value=0)
-                        
-                        if not sentiment_timeline.empty:
-                            fig = px.area(sentiment_timeline, 
-                                        title="Sentiment Trends Over Time",
-                                        color_discrete_map={
-                                            'positive': '#2ecc71',
-                                            'neutral': '#95a5a6', 
-                                            'negative': '#e74c3c'
-                                        })
-                            st.plotly_chart(fig, use_container_width=True)
-                
-            except Exception as e:
-                st.warning(f"Could not create timeline visualization: {e}")
-                # Fallback - show basic timeline
-                if 'date' in df.columns:
-                    date_counts = df['date'].value_counts().sort_index()
-                    st.line_chart(date_counts)
-        else:
-            st.info("Date information not available for timeline analysis")
-        
-        # Word Cloud
-        st.subheader("☁️ Word Cloud")
         try:
-            from wordcloud import WordCloud
-            import matplotlib.pyplot as plt
-            
-            # Get text data
-            if 'text' in df.columns:
-                text_data = ' '.join(df['text'].fillna('').astype(str))
-                
-                # Clean text for word cloud
-                import re
-                # Remove URLs, mentions, hashtags for cleaner word cloud
-                clean_text = re.sub(r'http\S+|www\S+|https\S+', '', text_data, flags=re.MULTILINE)
-                clean_text = re.sub(r'@\w+|#\w+', '', clean_text)
-                clean_text = re.sub(r'[^a-zA-Z\s]', '', clean_text)
-                
-                if clean_text.strip():
-                    # Create word cloud
-                    wordcloud = WordCloud(
-                        width=800, 
-                        height=400, 
-                        background_color='white',
-                        colormap='viridis',
-                        max_words=100,
-                        relative_scaling=0.5,
-                        stopwords=['omicron', 'covid', 'coronavirus', 'pandemic', 'virus']
-                    ).generate(clean_text)
-                    
-                    # Display word cloud
-                    fig, ax = plt.subplots(figsize=(10, 5))
-                    ax.imshow(wordcloud, interpolation='bilinear')
-                    ax.axis('off')
-                    st.pyplot(fig)
-                else:
-                    st.info("Not enough text data to generate word cloud")
-            else:
-                st.warning("Text data not available for word cloud generation")
-                
-        except ImportError:
-            st.warning("Word cloud library not available. Install wordcloud package for visualization.")
-        except Exception as e:
-            st.warning(f"Could not generate word cloud: {e}")
-        
-        # Most Engaging Tweets
-        st.subheader("🔥 Most Viral Tweets")
-        if 'retweets' in df.columns and 'favorites' in df.columns:
-            df['total_engagement'] = df['retweets'] + df['favorites']
-            top_tweets = df.nlargest(5, 'total_engagement')
-            
-            for i, (_, tweet) in enumerate(top_tweets.iterrows(), 1):
-                with st.expander(f"#{i} - {int(tweet['total_engagement']):,} total engagement"):
-                    st.write(f"**@{tweet.get('user_name', 'Unknown')}**")
-                    st.write(tweet.get('text', ''))
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Retweets", int(tweet.get('retweets', 0)))
-                    with col2:
-                        st.metric("Favorites", int(tweet.get('favorites', 0)))
-                    with col3:
-                        if 'sentiment_label' in tweet:
-                            sentiment_emoji = {'positive': '😊', 'negative': '😟', 'neutral': '😐'}
-                            emoji = sentiment_emoji.get(tweet['sentiment_label'], '😐')
-                            st.metric("Sentiment", f"{emoji} {tweet['sentiment_label']}")
-        
-        # Show sample data
-        st.subheader("📝 Sample Tweets")
-        display_columns = ['user_name', 'text', 'date', 'retweets', 'favorites']
-        available_columns = [col for col in display_columns if col in df.columns]
-        if available_columns:
-            st.dataframe(df[available_columns].head(10), use_container_width=True)
-        else:
-            st.dataframe(df.head(10), use_container_width=True)
-        
-    else:
-        st.warning("⚠️ Data not loaded. Click 'Load Data' in the sidebar.")
-
-def interactive_query_page():
-    """Interactive query page with real search functionality"""
-    st.title("🔍 Interactive Query")
-    st.markdown("Search and filter tweets based on your criteria")
-    
-    if not st.session_state.data_loaded:
-        st.warning("⚠️ Please load data first from the Overview page")
-        return
-    
-    df = st.session_state.df
-    
-    # Search functionality
-    search_term = st.text_input("🔍 Search tweets:", placeholder="Enter keywords to search...", key="interactive_search_input")
-    
-    # Advanced filters
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        sentiment_filter = st.selectbox("Filter by sentiment:", ['All', 'positive', 'negative', 'neutral'], key="sentiment_filter_select")
-    
-    with col2:
-        if 'user_name' in df.columns:
-            users = ['All'] + sorted(df['user_name'].unique().tolist())
-            user_filter = st.selectbox("Filter by user:", users[:100], key="user_filter_select")  # Limit for performance
-        else:
-            user_filter = 'All'
-    
-    # Apply filters
-    filtered_df = df.copy()
-    
-    if search_term:
-        text_columns = [col for col in df.columns if any(keyword in col.lower() for keyword in ['text', 'tweet', 'content'])]
-        if text_columns:
-            mask = filtered_df[text_columns[0]].str.contains(search_term, case=False, na=False)
-            filtered_df = filtered_df[mask]
-    
-    if sentiment_filter != 'All' and 'sentiment_label' in df.columns:
-        filtered_df = filtered_df[filtered_df['sentiment_label'] == sentiment_filter]
-    
-    if user_filter != 'All':
-        filtered_df = filtered_df[filtered_df['user_name'] == user_filter]
-    
-    # Results
-    st.write(f"**Found {len(filtered_df):,} tweets matching your criteria**")
-    
-    if len(filtered_df) > 0:
-        # Show results with engagement metrics
-        display_columns = ['user_name', 'text', 'date', 'retweets', 'favorites', 'sentiment_label']
-        available_columns = [col for col in display_columns if col in filtered_df.columns]
-        
-        if available_columns:
-            st.dataframe(filtered_df[available_columns].head(50), use_container_width=True)
-        else:
-            st.dataframe(filtered_df.head(50), use_container_width=True)
-    else:
-        st.info("No tweets found matching your criteria. Try different search terms or filters.")
-
-def hashtag_analysis_page():
-    """Real hashtag analysis using your existing analyzer"""
-    st.title("🏷️ Hashtag Analysis")
-    st.markdown("Discover trending hashtags in omicron discussions")
-    
-    if not st.session_state.data_loaded:
-        st.warning("⚠️ Please load data first from the Overview page")
-        return
-    
-    analyzer = st.session_state.analyzer
-    df = st.session_state.df
-    
-    if analyzer and hasattr(analyzer, 'get_trending_hashtags'):
-        # Use your existing hashtag analysis
-        st.subheader("📈 Trending Hashtags")
-        
-        # Get trending hashtags
-        trending_hashtags = analyzer.get_trending_hashtags(20)
-        
-        if trending_hashtags:
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                hashtag_df = pd.DataFrame(trending_hashtags)
-                st.dataframe(hashtag_df, use_container_width=True)
-            
-            with col2:
-                # Visualization
-                try:
-                    import plotly.express as px
-                    fig = px.bar(
-                        hashtag_df.head(10), 
-                        x='count', 
-                        y='hashtag', 
-                        orientation='h',
-                        title="Top 10 Hashtags"
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                except ImportError:
-                    st.bar_chart(hashtag_df.head(10).set_index('hashtag')['count'])
-            
-            # Hashtag search
-            st.subheader("🔍 Search by Hashtag")
-            selected_hashtag = st.selectbox("Select a hashtag to explore:", [h['hashtag'] for h in trending_hashtags[:10]], key="hashtag_explore_select")
-            
-            if selected_hashtag and analyzer and hasattr(analyzer, 'query_tweets_by_hashtag'):
-                hashtag_tweets = analyzer.query_tweets_by_hashtag(selected_hashtag)
-                
-                if hashtag_tweets:
-                    st.write(f"**Found {len(hashtag_tweets)} tweets with #{selected_hashtag}**")
-                    
-                    # Convert to DataFrame for display
-                    hashtag_df = pd.DataFrame(hashtag_tweets)
-                    display_columns = ['user_name', 'text', 'retweets', 'favorites']
-                    available_columns = [col for col in display_columns if col in hashtag_df.columns]
-                    
-                    if available_columns:
-                        st.dataframe(hashtag_df[available_columns].head(20), use_container_width=True)
-                    else:
-                        st.dataframe(hashtag_df.head(20), use_container_width=True)
-        else:
-            st.info("No hashtags found in the dataset")
-    else:
-        st.warning("Hashtag analysis not available. Please ensure the analyzer is properly loaded.")
-
-def user_analysis_page():
-    """Real user analysis"""
-    st.title("👥 User Analysis")
-    st.markdown("Analyze user activity and engagement patterns")
-    
-    if not st.session_state.data_loaded:
-        st.warning("⚠️ Please load data first from the Overview page")
-        return
-    
-    df = st.session_state.df
-    
-    if 'user_name' in df.columns:
-        # Most active users
-        user_counts = df['user_name'].value_counts().head(20)
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("📈 Most Active Users")
-            user_activity_df = pd.DataFrame({
-                'User': user_counts.index,
-                'Tweet Count': user_counts.values
-            })
-            st.dataframe(user_activity_df, use_container_width=True)
-        
-        with col2:
-            st.subheader("📊 User Activity Distribution")
-            st.bar_chart(user_counts.head(10))
-        
-        # User engagement analysis
-        engagement_cols = [col for col in df.columns if any(keyword in col.lower() for keyword in ['retweet', 'favorite', 'like'])]
-        
-        if engagement_cols:
-            st.subheader("💫 User Engagement Analysis")
-            
-            # Calculate total engagement
-            if 'retweets' in df.columns and 'favorites' in df.columns:
-                df['total_engagement'] = df['retweets'] + df['favorites']
-                
-                user_engagement = df.groupby('user_name').agg({
-                    'total_engagement': ['sum', 'mean'],
-                    'retweets': 'sum',
-                    'favorites': 'sum',
-                    'text': 'count'
-                }).round(2)
-                
-                user_engagement.columns = ['total_engagement', 'avg_engagement', 'total_retweets', 'total_favorites', 'tweet_count']
-                top_engaged_users = user_engagement.sort_values('total_engagement', ascending=False).head(10)
-                
-                st.write("**Top 10 Users by Total Engagement:**")
-                st.dataframe(top_engaged_users, use_container_width=True)
-        
-        # User selection for detailed analysis
-        st.subheader("🔍 Individual User Analysis")
-        selected_user = st.selectbox("Select a user for detailed analysis:", [''] + user_counts.head(20).index.tolist(), key="user_analysis_select")
-        
-        if selected_user:
-            user_tweets = df[df['user_name'] == selected_user]
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Tweets", len(user_tweets))
-            with col2:
-                if 'retweets' in df.columns:
-                    st.metric("Total Retweets", user_tweets['retweets'].sum())
-            with col3:
-                if 'favorites' in df.columns:
-                    st.metric("Total Favorites", user_tweets['favorites'].sum())
-            
-            # Show user's tweets
-            st.write(f"**Recent tweets from @{selected_user}:**")
-            display_columns = ['text', 'date', 'retweets', 'favorites']
-            available_columns = [col for col in display_columns if col in user_tweets.columns]
-            
-            if available_columns:
-                st.dataframe(user_tweets[available_columns].head(10), use_container_width=True)
-            else:
-                st.dataframe(user_tweets.head(10), use_container_width=True)
-    else:
-        st.warning("No user information found in the dataset")
-
-def sentiment_deep_dive_page():
-    """Real sentiment analysis using your existing analyzer"""
-    st.title("😊 Sentiment Deep Dive")
-    st.markdown("Comprehensive sentiment analysis of omicron tweets")
-    
-    if not st.session_state.data_loaded:
-        st.warning("⚠️ Please load data first from the Overview page")
-        return
-    
-    analyzer = st.session_state.analyzer
-    df = st.session_state.df
-    
-    if analyzer:
-        # Get real sentiment analysis
-        sentiment_dist = analyzer.analyze_sentiment_distribution()
-        
-        if 'sentiment_distribution' in sentiment_dist:
-            sent_data = sentiment_dist['sentiment_distribution']
-            total_tweets = sentiment_dist.get('total_tweets', len(df))
-            
-            # Sentiment metrics
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                positive_count = sent_data.get('positive', 0)
-                positive_pct = (positive_count / total_tweets * 100) if total_tweets > 0 else 0
-                st.metric("Positive Tweets", f"{positive_count:,}", f"{positive_pct:.1f}%")
-            
-            with col2:
-                neutral_count = sent_data.get('neutral', 0)
-                neutral_pct = (neutral_count / total_tweets * 100) if total_tweets > 0 else 0
-                st.metric("Neutral Tweets", f"{neutral_count:,}", f"{neutral_pct:.1f}%")
-            
-            with col3:
-                negative_count = sent_data.get('negative', 0)
-                negative_pct = (negative_count / total_tweets * 100) if total_tweets > 0 else 0
-                st.metric("Negative Tweets", f"{negative_count:,}", f"{negative_pct:.1f}%")
-            
-            # Sentiment visualization
-            st.subheader("📊 Sentiment Distribution")
-            try:
-                import plotly.express as px
-                fig = px.pie(values=list(sent_data.values()), names=list(sent_data.keys()),
-                           title="Overall Sentiment Distribution")
-                st.plotly_chart(fig, use_container_width=True)
-            except ImportError:
-                st.bar_chart(pd.Series(sent_data))
-            
-            # Sample tweets by sentiment
-            st.subheader("📝 Sample Tweets by Sentiment")
-            
-            sentiment_filter = st.selectbox("Select sentiment:", ['positive', 'negative', 'neutral'], key="sentiment_sample_select")
-            
-            if 'sentiment_label' in df.columns:
-                filtered_tweets = df[df['sentiment_label'] == sentiment_filter]
-                
-                if len(filtered_tweets) > 0:
-                    st.write(f"**Sample {sentiment_filter} tweets:**")
-                    
-                    # Show top engaging tweets for this sentiment
-                    if 'total_engagement' in filtered_tweets.columns:
-                        filtered_tweets = filtered_tweets.nlargest(10, 'total_engagement')
-                    else:
-                        filtered_tweets = filtered_tweets.head(10)
-                    
-                    for i, (_, tweet) in enumerate(filtered_tweets.iterrows(), 1):
-                        with st.expander(f"Tweet {i} - @{tweet.get('user_name', 'Unknown')}"):
-                            st.write(tweet.get('text', ''))
-                            if 'retweets' in tweet and 'favorites' in tweet:
-                                st.write(f"📊 {tweet['retweets']} retweets, {tweet['favorites']} favorites")
-                else:
-                    st.info(f"No {sentiment_filter} tweets found")
-            else:
-                st.warning("Sentiment labels not available in the dataset")
-    else:
-        st.warning("Sentiment analyzer not available. Please ensure data is properly loaded.")
-
-def rag_chat_page():
-    """RAG Chat interface with comprehensive model selection"""
-    st.title("🤖 RAG Chat - AI-Powered Tweet Analysis")
-    st.markdown("Chat with your omicron dataset using state-of-the-art AI models")
-    
-    if not st.session_state.data_loaded:
-        st.warning("⚠️ Please load data first from the Overview page")
-        return
-    
-    # Model selection and configuration
-    st.subheader("🔧 AI Model Configuration")
-    
-    # Available models with status
-    available_models = {
-        "Google Gemini": {
-            "id": "google",
-            "status": "✅ FREE - Generous limits", 
-            "description": "Google's latest multimodal AI - Best for comprehensive analysis",
-            "api_key": "AIzaSyC9WVZri_Gas_scMlkk-OeveNCkR5LMLCc",
-            "available": RAG_AVAILABLE and GOOGLE_AVAILABLE
-        },
-        "Claude Sonnet": {
-            "id": "claude", 
-            "status": "💳 Paid - High quality",
-            "description": "Anthropic's reasoning model - Excellent for nuanced analysis",
-            "api_key": None,
-            "available": RAG_AVAILABLE and ANTHROPIC_AVAILABLE
-        },
-        "OpenAI GPT": {
-            "id": "openai",
-            "status": "💳 Paid - Popular choice", 
-            "description": "OpenAI's ChatGPT - Versatile and well-rounded",
-            "api_key": None,
-            "available": RAG_AVAILABLE and OPENAI_AVAILABLE
-        },
-        "Ollama Local": {
-            "id": "ollama",
-            "status": "🔒 Local - Privacy focused",
-            "description": "Run models locally - No internet required",
-            "api_key": None,
-            "available": RAG_AVAILABLE and OLLAMA_AVAILABLE
-        },
-        "Cohere": {
-            "id": "cohere",
-            "status": "🆓 FREE tier available",
-            "description": "Cohere's language model - Good for text analysis",
-            "api_key": None,
-            "available": RAG_AVAILABLE and COHERE_AVAILABLE
-        }
-    }
-    
-    # Display model options
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        selected_model = st.selectbox(
-            "Choose AI Model:",
-            options=list(available_models.keys()),
-            format_func=lambda x: f"{x} - {available_models[x]['status']}",
-            key="rag_model_select"
-        )
-    
-    with col2:
-        if st.button("🔄 Initialize Model", type="primary", key="init_selected_model_btn"):
-            model_config = available_models[selected_model]
-            if model_config['available']:
-                with st.spinner(f"Initializing {selected_model}..."):
-                    st.session_state.rag_system = initialize_rag_system_with_model(
-                        model_config['id'], 
-                        model_config['api_key']
-                    )
-                if st.session_state.rag_system:
-                    st.success(f"✅ {selected_model} initialized successfully!")
-                    st.rerun()
-                else:
-                    st.error(f"❌ Failed to initialize {selected_model}")
-            else:
-                st.error(f"❌ {selected_model} not available")
-    
-    # Model details
-    with st.expander(f"📋 About {selected_model}", expanded=False):
-        model_info = available_models[selected_model]
-        st.markdown(f"**Description:** {model_info['description']}")
-        st.markdown(f"**Status:** {model_info['status']}")
-        st.markdown(f"**Available:** {'✅ Yes' if model_info['available'] else '❌ No'}")
-        
-        if selected_model == "Google Gemini":
-            st.markdown("**Features:**")
-            st.markdown("- 🆓 Free with generous usage limits")
-            st.markdown("- 🚀 Fast response times")
-            st.markdown("- 🎯 Excellent for sentiment analysis")
-            st.markdown("- 📊 Good at data interpretation")
-            
-        elif selected_model == "Claude Sonnet":
-            st.markdown("**Features:**")
-            st.markdown("- 🧠 Superior reasoning capabilities")
-            st.markdown("- 📝 Excellent for complex analysis")
-            st.markdown("- 🎯 Nuanced understanding")
-            st.markdown("- 💡 Creative insights")
-            
-        elif selected_model == "OpenAI GPT":
-            st.markdown("**Features:**")
-            st.markdown("- 🌟 Most popular AI model")
-            st.markdown("- 🔄 Versatile and reliable")
-            st.markdown("- 🎯 Good general performance")
-            st.markdown("- 📚 Extensive training data")
-    
-    # RAG System Status
-    st.subheader("🔍 RAG System Status")
-    
-    if st.session_state.rag_system:
-        st.success(f"✅ RAG system active with {selected_model}")
-        
-        # System capabilities
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Vector Store", "✅ Ready")
-        with col2:
-            st.metric("Embeddings", "✅ HuggingFace")
-        with col3:
-            st.metric("Model", f"✅ {selected_model}")
-        
-        # Chat Interface
-        st.subheader("💬 Interactive Chat")
-        
-        # Quick action buttons
-        st.markdown("**🚀 Quick Questions:**")
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            if st.button("📈 Trending Topics", key="trending_topics_btn"):
-                st.session_state.user_question = "What are the main topics and trending hashtags in the omicron tweets? Provide insights on what people are discussing most."
-        
-        with col2:
-            if st.button("😷 Sentiment Analysis", key="sentiment_analysis_btn"):
-                st.session_state.user_question = "Analyze the overall sentiment towards omicron. What are people's main concerns and positive aspects mentioned?"
-        
-        with col3:
-            if st.button("👥 User Insights", key="user_insights_btn"):
-                st.session_state.user_question = "Who are the most influential users discussing omicron? What patterns do you see in user behavior and engagement?"
-        
-        # Advanced questions
-        with st.expander("🔬 Advanced Analysis Questions", expanded=False):
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("🌍 Geographic Patterns", key="geo_patterns_btn"):
-                    st.session_state.user_question = "Are there any geographic or regional patterns in how omicron is being discussed?"
-                if st.button("📅 Timeline Analysis", key="timeline_analysis_btn"):
-                    st.session_state.user_question = "How has the conversation about omicron evolved over time? What changes do you notice?"
-            
-            with col2:
-                if st.button("🔗 Network Analysis", key="network_analysis_btn"):
-                    st.session_state.user_question = "Analyze the retweet and mention patterns. Who are the key influencers and how is information spreading?"
-                if st.button("📊 Engagement Metrics", key="engagement_metrics_btn"):
-                    st.session_state.user_question = "Which types of omicron-related content get the most engagement? What drives virality?"
-        
-        # Custom question input
-        user_question = st.text_input(
-            "💭 Ask your own question:",
-            value=st.session_state.get('user_question', ''),
-            placeholder="e.g., What are the main misconceptions about omicron in the tweets?",
-            key="rag_custom_question_input"
-        )
-        
-        # Process question
-        if user_question:
-            st.markdown("---")
-            st.markdown(f"**❓ Your Question:** {user_question}")
-            
-            with st.spinner(f"🤖 {selected_model} is analyzing your data..."):
-                try:
-                    # Use the RAG system
-                    response = st.session_state.rag_system.query_with_rag(user_question)
-                    
-                    st.markdown(f"**🤖 {selected_model} Response:**")
-                    st.markdown(response)
-                    
-                    # Add follow-up suggestions
-                    st.markdown("**🔄 Follow-up suggestions:**")
-                    suggestions = [
-                        "Can you provide more specific examples?",
-                        "What are the implications of these findings?",
-                        "How does this compare to other topics in the dataset?",
-                        "Can you quantify these insights with numbers?"
-                    ]
-                    
-                    suggestion_cols = st.columns(2)
-                    for i, suggestion in enumerate(suggestions):
-                        with suggestion_cols[i % 2]:
-                            if st.button(suggestion, key=f"followup_{i}"):
-                                st.session_state.user_question = f"{user_question} {suggestion}"
-                                st.rerun()
-                    
-                except Exception as e:
-                    st.error(f"❌ Error processing question: {e}")
-                    
-                    # Fallback analysis
-                    if st.session_state.analyzer:
-                        st.markdown("**📊 Fallback Analysis:**")
-                        with st.spinner("Using basic analysis..."):
-                            try:
-                                fallback_response = st.session_state.analyzer.query_rag(user_question)
-                                st.markdown(fallback_response.get('answer', 'Analysis could not be completed.'))
-                            except Exception as fallback_error:
-                                st.error(f"Fallback analysis also failed: {fallback_error}")
-    
-    elif RAG_AVAILABLE:
-        st.warning("🔄 RAG system not initialized. Select a model above and click 'Initialize Model'.")
-        
-        # Show what's needed for each model
-        st.subheader("🔑 Model Requirements")
-        
-        for model_name, config in available_models.items():
-            with st.expander(f"Setup {model_name}"):
-                if config['api_key']:
-                    st.success(f"✅ API key available for {model_name}")
-                else:
-                    st.warning(f"⚠️ API key needed for {model_name}")
-                
-                if model_name == "Google Gemini":
-                    st.markdown("**How to get Google Gemini API key:**")
-                    st.markdown("1. Visit [Google AI Studio](https://makersuite.google.com/app/apikey)")
-                    st.markdown("2. Sign in with Google account")
-                    st.markdown("3. Create new API key")
-                    st.markdown("4. Copy and paste in the configuration")
-                
-                elif model_name == "Claude Sonnet":
-                    st.markdown("**How to get Claude API key:**")
-                    st.markdown("1. Visit [Anthropic Console](https://console.anthropic.com/)")
-                    st.markdown("2. Create account and verify")
-                    st.markdown("3. Go to API Keys section")
-                    st.markdown("4. Generate new key")
-                
-                elif model_name == "OpenAI GPT":
-                    st.markdown("**How to get OpenAI API key:**")
-                    st.markdown("1. Visit [OpenAI Platform](https://platform.openai.com/api-keys)")
-                    st.markdown("2. Sign in or create account")
-                    st.markdown("3. Navigate to API keys")
-                    st.markdown("4. Create new secret key")
-    
-    else:
-        st.error("🚧 **RAG System Unavailable**")
-        st.markdown("""
-        The RAG (Retrieval Augmented Generation) system requires additional dependencies.
-        
-        **Missing Components:**
-        - LangChain framework
-        - Vector database (FAISS)
-        - Embeddings model
-        - LLM providers
-        
-        **Alternative Analysis:**
-        Use other tabs for comprehensive analysis without AI chat.
-        """)
-
-def initialize_rag_system_with_model(model_id: str, api_key: str = None):
-    """Initialize RAG system with specific model"""
-    if not RAG_AVAILABLE:
-        return None
-    
-    try:
-        # Use the provided API key or fallback
-        if model_id == "google":
-            google_api_key = api_key or os.getenv('GOOGLE_API_KEY', 'AIzaSyC9WVZri_Gas_scMlkk-OeveNCkR5LMLCc')
-        else:
-            google_api_key = None
-        
-        # Find CSV path
-        csv_path = None
-        possible_paths = [
-            'omicron_2025.csv',
-            'data/omicron_2025.csv',
-            os.path.join('data', 'omicron_2025.csv'),
-            os.path.join(os.path.dirname(__file__), 'omicron_2025.csv')
-        ]
-        
-        for path in possible_paths:
-            if os.path.exists(path):
-                csv_path = path
-                break
-        
-        if csv_path:
-            rag_system = OmicronSentimentRAG(
+            return OmicronSentimentRAG(
                 csv_path=csv_path,
+                anthropic_api_key=anthropic_api_key,
+                openai_api_key=openai_api_key,
                 google_api_key=google_api_key,
-                llm_provider=model_id
+                together_api_key=together_api_key,
+                cohere_api_key=cohere_api_key,
+                llm_provider=llm_provider
             )
-            return rag_system
-    except Exception as e:
-        st.error(f"RAG system initialization failed: {e}")
+        except Exception as e:
+            st.warning(f"⚠️ Failed to load advanced analyzer: {e}")
+            st.info("🔄 Falling back to simple analyzer...")
+    
+    if SIMPLE_ANALYZER_AVAILABLE:
+        st.info("📊 Loading simple sentiment analyzer...")
+        try:
+            return SimpleSentimentAnalyzer(csv_path=csv_path)
+        except Exception as e:
+            st.error(f"Failed to load simple analyzer: {e}")
+            return None
+    else:
+        st.error("No analyzer available. Please check the deployment.")
         return None
 
 def main():
-    # Sidebar navigation
-    st.sidebar.title("🦠 Navigation")
+    st.title("🦠 Omicron Tweets Sentiment Analysis with RAG")
+    st.markdown("### Analyzing COVID-19 Omicron variant discussions on Twitter using AI")
     
-    # Load data button
-    if st.sidebar.button("🔄 Load Data", type="primary", key="load_data_btn"):
-        with st.spinner("Loading data..."):
-            result = load_data()
-        if st.session_state.data_loaded:
-            st.sidebar.success("✅ Data loaded successfully!")
-            st.rerun()
-        else:
-            st.sidebar.error("❌ Failed to load data")
+    # Show library status
+    # st.sidebar.header("📦 Library Status")
+    # st.sidebar.write(f"📊 Plotly: {'✅' if PLOTLY_AVAILABLE else '❌'}")
+    # st.sidebar.write(f"☁️ WordCloud: {'✅' if WORDCLOUD_AVAILABLE else '❌'}")
+    # st.sidebar.write(f"🧠 Advanced RAG: {'✅' if CORE_MODULE_AVAILABLE else '❌'}")
+    # st.sidebar.write(f"📈 Simple Analyzer: {'✅' if SIMPLE_ANALYZER_AVAILABLE else '❌'}")
     
-    # Navigation options
-    pages = {
-        "Overview": overview_page,
-        "Interactive Query": interactive_query_page,
-        "Hashtag Analysis": hashtag_analysis_page,
-        "User Analysis": user_analysis_page,
-        "Sentiment Deep Dive": sentiment_deep_dive_page,
-        "RAG Chat": rag_chat_page
-    }
-    
-    # Page selection
-    selected_page = st.sidebar.selectbox("Choose a page:", list(pages.keys()))
-    
-    # Data status
-    if st.session_state.data_loaded:
-        st.sidebar.success(f"📊 Dataset: {len(st.session_state.df):,} tweets loaded")
-        if st.session_state.analyzer:
-            st.sidebar.success("🔍 Analyzer: Ready")
-        if st.session_state.rag_system:
-            st.sidebar.success("🤖 RAG: Active")
-    else:
-        st.sidebar.warning("📊 No data loaded")
-    
-    # System status
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("**🔧 System Status:**")
-    st.sidebar.markdown(f"- Analyzer: {'✅' if ANALYZER_AVAILABLE else '❌'}")
-    st.sidebar.markdown(f"- RAG System: {'✅' if RAG_AVAILABLE else '❌'}")
-    
-    # RAG Models Status
-    if RAG_AVAILABLE:
-        st.sidebar.markdown("**🤖 Available AI Models:**")
-        st.sidebar.markdown(f"- Google Gemini: {'✅' if GOOGLE_AVAILABLE else '❌'}")
-        st.sidebar.markdown(f"- Claude Sonnet: {'✅' if ANTHROPIC_AVAILABLE else '❌'}")
-        st.sidebar.markdown(f"- OpenAI GPT: {'✅' if OPENAI_AVAILABLE else '❌'}")
-        st.sidebar.markdown(f"- Cohere: {'✅' if COHERE_AVAILABLE else '❌'}")
-        st.sidebar.markdown(f"- Ollama: {'✅' if OLLAMA_AVAILABLE else '❌'}")
+    # Check if any analyzer is available
+    if not CORE_MODULE_AVAILABLE and not SIMPLE_ANALYZER_AVAILABLE:
+        st.warning("⚠️ Analysis modules are currently loading or unavailable.")
+        st.info("📝 This is normal during initial Streamlit Cloud deployment.")
         
-        if st.session_state.rag_system:
-            st.sidebar.success("🤖 RAG Active")
-        else:
-            st.sidebar.warning("🤖 RAG Inactive")
-    
-    # Run selected page
-    pages[selected_page]()
-    
-    # Footer
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("**🔧 Built with:**")
-    st.sidebar.markdown("- Streamlit")
-    st.sidebar.markdown("- Your Analysis Modules") 
-    st.sidebar.markdown("- Python 3.13")
-
-if __name__ == "__main__":
-    main()
-
-def basic_sentiment_analysis(text):
-    """Basic sentiment analysis without external libraries"""
-    if pd.isna(text):
-        return 'neutral'
-    
-    text = str(text).lower()
-    
-    # Simple positive/negative word lists
-    positive_words = ['good', 'great', 'excellent', 'amazing', 'wonderful', 'fantastic', 'love', 'like', 'happy', 'positive', 'best', 'awesome', 'perfect', 'brilliant', 'outstanding', 'superb']
-    negative_words = ['bad', 'terrible', 'awful', 'horrible', 'hate', 'dislike', 'sad', 'negative', 'worst', 'disgusting', 'pathetic', 'useless', 'stupid', 'annoying', 'frustrating']
-    
-    positive_count = sum(1 for word in positive_words if word in text)
-    negative_count = sum(1 for word in negative_words if word in text)
-    
-    if positive_count > negative_count:
-        return 'positive'
-    elif negative_count > positive_count:
-        return 'negative'
-    else:
-        return 'neutral'
-
-def extract_hashtags(text):
-    """Extract hashtags from text"""
-    if pd.isna(text):
-        return []
-    return re.findall(r'#\w+', str(text))
-
-def extract_mentions(text):
-    """Extract mentions from text"""
-    if pd.isna(text):
-        return []
-    return re.findall(r'@\w+', str(text))
-
-def overview_page():
-    """Overview page content"""
-    st.title("🦠 Omicron Tweets Sentiment Analysis")
-    st.markdown("### Analyzing COVID-19 Omicron variant discussions on Twitter")
-    
-    if st.session_state.data_loaded and st.session_state.df is not None:
-        df = st.session_state.df
+        # Show basic demo information
+        st.header("📊 Project Overview")
+        st.write("""
+        This application analyzes **17,046 Twitter tweets** about the COVID-19 Omicron variant using:
         
-        st.success("✅ Data file found!")
+        - **🤖 AI-Powered RAG**: Chat with the tweet dataset using Google Gemini (FREE)
+        - **📊 Sentiment Analysis**: VADER and TextBlob sentiment scoring
+        - **📈 Interactive Visualizations**: Charts and word clouds
+        - **🏷️ Hashtag Analysis**: Trending topics and engagement metrics
         
-        # Dataset overview
-        col1, col2, col3, col4 = st.columns(4)
+        **Features:**
+        - Multi-method sentiment analysis
+        - Real-time tweet querying
+        - AI-powered natural language chat
+        - Interactive data exploration
+        """)
         
-        with col1:
-            st.metric("Total Tweets", f"{len(df):,}")
-        
-        with col2:
-            unique_users = df['user_name'].nunique() if 'user_name' in df.columns else "N/A"
-            st.metric("Unique Users", unique_users)
-        
-        with col3:
-            if 'created_at' in df.columns:
-                date_range = f"{len(pd.to_datetime(df['created_at'], errors='coerce').dt.date.unique())} days"
-            else:
-                date_range = "N/A"
-            st.metric("Date Range", date_range)
-        
-        with col4:
-            st.metric("Columns", len(df.columns))
-        
-        # Show sample data
-        st.subheader("📝 Sample Tweets")
-        st.dataframe(df.head(10), use_container_width=True)
-        
-        # Basic stats
-        st.subheader("📊 Dataset Information")
-        st.write(f"**Columns**: {', '.join(df.columns)}")
-        
-    else:
-        st.warning("⚠️ Data file not found. Showing demo information.")
-        
-        # Demo metrics
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("Total Tweets", "17,046")
         with col2:
-            st.metric("Unique Users", "8,523")
+            st.metric("Sentiment Methods", "2 (VADER + TextBlob)")
         with col3:
-            st.metric("Date Range", "30 days")
-        with col4:
-            st.metric("Sentiment Methods", "3")
-
-def interactive_query_page():
-    """Interactive query page"""
-    st.title("🔍 Interactive Query")
-    st.markdown("Search and filter tweets based on your criteria")
-    
-    if not st.session_state.data_loaded:
-        st.warning("⚠️ Please load data first from the Overview page")
-        return
-    
-    df = st.session_state.df
-    
-    # Search functionality
-    search_term = st.text_input("🔍 Search tweets:", placeholder="Enter keywords to search...")
-    
-    if search_term:
-        # Search in text columns
-        text_columns = [col for col in df.columns if 'text' in col.lower() or 'tweet' in col.lower()]
-        if text_columns:
-            mask = df[text_columns[0]].str.contains(search_term, case=False, na=False)
-            filtered_df = df[mask]
+            st.metric("AI Providers", "5+ (Free Options)")
             
-            st.write(f"**Found {len(filtered_df)} tweets containing '{search_term}'**")
-            st.dataframe(filtered_df, use_container_width=True)
-        else:
-            st.warning("No text columns found for searching")
-    else:
-        st.info("Enter a search term above to filter tweets")
-
-def hashtag_analysis_page():
-    """Hashtag analysis page"""
-    st.title("# Hashtag Analysis")
-    st.markdown("Discover trending hashtags in omicron discussions")
+        st.info("🔄 The app will automatically load once dependencies are installed.")
+        st.stop()
     
-    if not st.session_state.data_loaded:
-        st.warning("⚠️ Please load data first from the Overview page")
-        return
+    # Load analyzer
+    with st.spinner("Loading data and initializing analysis system..."):
+        analyzer = load_analyzer()
     
-    df = st.session_state.df
-    
-    # Find text column
-    text_columns = [col for col in df.columns if any(keyword in col.lower() for keyword in ['text', 'tweet', 'content'])]
-    
-    if text_columns:
-        text_col = text_columns[0]
+    if analyzer is None:
+        st.error("Failed to load analysis system.")
+        st.info("This might be a temporary issue during deployment.")
+        st.stop()
         
-        # Extract hashtags
-        all_hashtags = []
-        for text in df[text_col].dropna():
-            hashtags = extract_hashtags(str(text))
-            all_hashtags.extend(hashtags)
-        
-        if all_hashtags:
-            hashtag_counts = Counter(all_hashtags)
-            top_hashtags = hashtag_counts.most_common(20)
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.subheader("📈 Top Hashtags")
-                hashtag_df = pd.DataFrame(top_hashtags, columns=['Hashtag', 'Count'])
-                st.dataframe(hashtag_df, use_container_width=True)
-            
-            with col2:
-                st.subheader("📊 Hashtag Distribution")
-                try:
-                    import plotly.express as px
-                    fig = px.bar(hashtag_df.head(10), x='Count', y='Hashtag', orientation='h',
-                               title="Top 10 Hashtags")
-                    st.plotly_chart(fig, use_container_width=True)
-                except ImportError:
-                    st.bar_chart(hashtag_df.head(10).set_index('Hashtag'))
-        else:
-            st.info("No hashtags found in the dataset")
-    else:
-        st.warning("No text column found for hashtag analysis")
-
-def user_analysis_page():
-    """User analysis page"""
-    st.title("👥 User Analysis")
-    st.markdown("Analyze user activity and engagement patterns")
-    
-    if not st.session_state.data_loaded:
-        st.warning("⚠️ Please load data first from the Overview page")
-        return
-    
-    df = st.session_state.df
-    
-    # User activity analysis
-    if 'user_name' in df.columns:
-        user_counts = df['user_name'].value_counts().head(20)
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("📈 Most Active Users")
-            user_df = pd.DataFrame({
-                'User': user_counts.index,
-                'Tweet Count': user_counts.values
-            })
-            st.dataframe(user_df, use_container_width=True)
-        
-        with col2:
-            st.subheader("📊 User Activity Distribution")
-            st.bar_chart(user_counts.head(10))
-        
-        # User engagement metrics
-        engagement_cols = [col for col in df.columns if any(keyword in col.lower() for keyword in ['like', 'retweet', 'reply', 'favorite'])]
-        
-        if engagement_cols:
-            st.subheader("💫 User Engagement Metrics")
-            for col in engagement_cols[:3]:  # Show top 3 engagement metrics
-                if df[col].dtype in ['int64', 'float64']:
-                    avg_engagement = df.groupby('user_name')[col].mean().sort_values(ascending=False).head(10)
-                    st.write(f"**Top users by average {col}:**")
-                    st.bar_chart(avg_engagement)
-    else:
-        st.warning("No user information found in the dataset")
-
-def sentiment_deep_dive_page():
-    """Sentiment analysis deep dive"""
-    st.title("😊 Sentiment Deep Dive")
-    st.markdown("Comprehensive sentiment analysis of omicron tweets")
-    
-    if not st.session_state.data_loaded:
-        st.warning("⚠️ Please load data first from the Overview page")
-        return
-    
-    df = st.session_state.df
-    
-    # Find text column
-    text_columns = [col for col in df.columns if any(keyword in col.lower() for keyword in ['text', 'tweet', 'content'])]
-    
-    if text_columns:
-        text_col = text_columns[0]
-        
-        # Perform basic sentiment analysis
-        if 'sentiment_basic' not in df.columns:
-            with st.spinner("Analyzing sentiment..."):
-                df['sentiment_basic'] = df[text_col].apply(basic_sentiment_analysis)
-        
-        # Sentiment distribution
-        sentiment_counts = df['sentiment_basic'].value_counts()
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("Positive Tweets", sentiment_counts.get('positive', 0), 
-                     delta=f"{sentiment_counts.get('positive', 0)/len(df)*100:.1f}%")
-        
-        with col2:
-            st.metric("Neutral Tweets", sentiment_counts.get('neutral', 0),
-                     delta=f"{sentiment_counts.get('neutral', 0)/len(df)*100:.1f}%")
-        
-        with col3:
-            st.metric("Negative Tweets", sentiment_counts.get('negative', 0),
-                     delta=f"{sentiment_counts.get('negative', 0)/len(df)*100:.1f}%")
-        
-        # Sentiment visualization
-        st.subheader("📊 Sentiment Distribution")
+        # Show demo data as fallback
         try:
-            import plotly.express as px
-            fig = px.pie(values=sentiment_counts.values, names=sentiment_counts.index,
-                        title="Overall Sentiment Distribution")
-            st.plotly_chart(fig, use_container_width=True)
-        except ImportError:
-            st.bar_chart(sentiment_counts)
-        
-        # Sample tweets by sentiment
-        st.subheader("📝 Sample Tweets by Sentiment")
-        
-        sentiment_filter = st.selectbox("Select sentiment:", ['positive', 'negative', 'neutral'])
-        
-        filtered_tweets = df[df['sentiment_basic'] == sentiment_filter][text_col].head(5)
-        
-        for i, tweet in enumerate(filtered_tweets, 1):
-            st.write(f"**{i}.** {tweet}")
-            st.write("---")
+            from demo_data import show_demo_data
+            show_demo_data()
+        except Exception as e:
+            st.error(f"Demo data also failed: {e}")
+        st.stop()
     
-    else:
-        st.warning("No text column found for sentiment analysis")
+    # Show analyzer type
+    analyzer_type = "Advanced RAG" if CORE_MODULE_AVAILABLE and hasattr(analyzer, 'query_rag') else "Simple"
+    st.sidebar.info(f"Using {analyzer_type} Analyzer")
+    
+    # Sidebar
+    st.sidebar.title("Navigation")
+    page = st.sidebar.selectbox(
+        "Choose a page:",
+        ["Overview", "Interactive Query", "Hashtag Analysis", "User Analysis", "Sentiment Deep Dive", "RAG Chat"]
+    )
+    
+    if page == "Overview":
+        show_overview(analyzer)
+    elif page == "Interactive Query":
+        show_interactive_query(analyzer)
+    elif page == "Hashtag Analysis":
+        show_hashtag_analysis(analyzer)
+    elif page == "User Analysis":
+        show_user_analysis(analyzer)
+    elif page == "Sentiment Deep Dive":
+        show_sentiment_analysis(analyzer)
+    elif page == "RAG Chat":
+        show_rag_chat(analyzer)
 
-def rag_chat_page():
-    """RAG Chat interface"""
-    st.title("🤖 RAG Chat")
-    st.markdown("Chat with your omicron dataset using AI")
+def show_overview(analyzer):
+    """Show overview dashboard."""
+    st.header("📊 Overview Dashboard")
     
-    if not st.session_state.data_loaded:
-        st.warning("⚠️ Please load data first from the Overview page")
-        return
+    # Generate report
+    report = analyzer.generate_report()
     
-    st.info("🚧 **RAG Chat Coming Soon!**")
+    # Basic stats in columns
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Total Tweets", len(analyzer.df))
+    
+    with col2:
+        st.metric("Unique Users", analyzer.df['user_name'].nunique())
+    
+    with col3:
+        sentiment_dist = analyzer.analyze_sentiment_distribution()
+        avg_sentiment = sentiment_dist['average_compound_score']
+        st.metric("Avg Sentiment", f"{avg_sentiment:.3f}")
+    
+    with col4:
+        total_engagement = analyzer.df['retweets'].sum() + analyzer.df['favorites'].sum()
+        st.metric("Total Engagement", f"{total_engagement:,}")
+    
+    # Sentiment distribution chart
+    st.subheader("Sentiment Distribution")
+    sentiment_data = analyzer.analyze_sentiment_distribution()
+    
+    if PLOTLY_AVAILABLE:
+        fig_pie = px.pie(
+            values=list(sentiment_data['sentiment_distribution'].values()),
+            names=list(sentiment_data['sentiment_distribution'].keys()),
+            title="Tweet Sentiment Distribution"
+        )
+        st.plotly_chart(fig_pie, use_container_width=True)
+    else:
+        # Fallback to simple display
+        st.write("Sentiment Distribution:")
+        for sentiment, count in sentiment_data['sentiment_distribution'].items():
+            st.write(f"- {sentiment}: {count}")
+    
+    # Timeline analysis
+    st.subheader("Tweet Timeline")
+    # Fix date parsing - dates are in DD-MM-YYYY HH:MM format
+    analyzer.df['date'] = pd.to_datetime(analyzer.df['date'], format='%d-%m-%Y %H:%M', errors='coerce')
+    timeline_data = analyzer.df.groupby(analyzer.df['date'].dt.date).size()
+    
+    if PLOTLY_AVAILABLE:
+        fig_timeline = px.line(
+            x=timeline_data.index,
+            y=timeline_data.values,
+            title="Tweets Over Time",
+            labels={'x': 'Date', 'y': 'Number of Tweets'}
+        )
+        st.plotly_chart(fig_timeline, use_container_width=True)
+    else:
+        # Fallback to simple line chart
+        st.line_chart(timeline_data)
+    
+    # Word cloud
+    st.subheader("Word Cloud")
+    if st.button("Generate Word Cloud"):
+        if WORDCLOUD_AVAILABLE:
+            all_text = ' '.join(analyzer.df['clean_text'].dropna())
+            if all_text.strip():
+                wordcloud = WordCloud(width=800, height=400, background_color='white').generate(all_text)
+                
+                fig, ax = plt.subplots(figsize=(10, 5))
+                ax.imshow(wordcloud, interpolation='bilinear')
+                ax.axis('off')
+                st.pyplot(fig)
+            else:
+                st.write("No text available for word cloud generation.")
+        else:
+            st.write("WordCloud library not available. Showing most common words instead:")
+            # Simple text frequency as fallback
+            all_text = ' '.join(analyzer.df['clean_text'].dropna())
+            if all_text.strip():
+                words = all_text.lower().split()
+                from collections import Counter
+                word_freq = Counter(words).most_common(20)
+                for word, freq in word_freq:
+                    st.write(f"- {word}: {freq}")
+            else:
+                st.warning("No text data available for word cloud generation.")
+
+def show_interactive_query(analyzer):
+    """Show interactive query interface."""
+    st.header("🔍 Interactive Query Interface")
+    
+    st.markdown("### Query Examples:")
     st.markdown("""
-    This feature will allow you to:
-    - Ask questions about the omicron dataset
-    - Get AI-powered insights
-    - Retrieve relevant tweets based on queries
-    - Generate summaries and reports
-    
-    **Available AI Models:**
-    - Google Gemini ✅
-    - Claude Sonnet
-    - OpenAI GPT
-    - Hugging Face Models
+    - **Hashtag queries**: "list users with hashtag omicron"
+    - **Content search**: "find tweets mentioning vaccine"
+    - **Sentiment filter**: "show positive tweets about omicron"
+    - **User search**: "tweets by Nathan Joyner"
     """)
     
-    # Demo chat interface
-    st.subheader("💬 Chat Interface (Demo)")
+    # Query input
+    query = st.text_input("Enter your query:", placeholder="e.g., list users with hashtag omicron")
     
-    user_question = st.text_input("Ask a question about the omicron tweets:")
-    
-    if user_question:
-        st.markdown("**🤖 AI Response:**")
-        st.info(f"Based on the analysis of 17,046 omicron tweets, here's what I found regarding: '{user_question}'. This is a demo response - full AI integration coming soon!")
+    if query:
+        with st.spinner("Processing query..."):
+            if 'hashtag' in query.lower():
+                # Extract hashtag
+                words = query.split()
+                hashtag = None
+                for word in words:
+                    if word.startswith('#'):
+                        hashtag = word[1:]
+                        break
+                    elif word.lower() in ['omicron', 'covid', 'vaccine', 'hospital', 'cdc']:
+                        hashtag = word.lower()
+                        break
+                
+                if hashtag:
+                    results = analyzer.query_tweets_by_hashtag(hashtag)
+                    st.success(f"Found {len(results)} tweets with hashtag '{hashtag}'")
+                    
+                    if results:
+                        df_results = pd.DataFrame(results)
+                        st.dataframe(df_results)
+                        
+                        # Show some sample tweets
+                        st.subheader("Sample Tweets:")
+                        for i, tweet in enumerate(results[:3]):
+                            with st.expander(f"Tweet {i+1} by {tweet['user_name']}"):
+                                st.write(f"**Location:** {tweet['user_location']}")
+                                st.write(f"**Date:** {tweet['date']}")
+                                st.write(f"**Sentiment:** {tweet['sentiment']}")
+                                st.write(f"**Tweet:** {tweet['tweet']}")
+                                st.write(f"**Engagement:** {tweet['retweets']} retweets, {tweet['favorites']} favorites")
+                else:
+                    st.error("Please specify a hashtag to search for.")
+            
+            elif 'user' in query.lower() or 'by' in query.lower():
+                # Extract username
+                words = query.split()
+                username = None
+                for i, word in enumerate(words):
+                    if word.lower() in ['by', 'user'] and i + 1 < len(words):
+                        username = words[i + 1]
+                        break
+                
+                if username:
+                    results = analyzer.get_user_tweets(username)
+                    st.success(f"Found {len(results)} tweets by users matching '{username}'")
+                    
+                    if results:
+                        df_results = pd.DataFrame(results)
+                        st.dataframe(df_results)
+                else:
+                    st.error("Please specify a username to search for.")
+            
+            elif any(word in query.lower() for word in ['find', 'search', 'mention']):
+                # Content search
+                search_terms = ['hospital', 'vaccine', 'covid', 'death', 'mild', 'severe', 'symptom']
+                search_term = None
+                for term in search_terms:
+                    if term in query.lower():
+                        search_term = term
+                        break
+                
+                if search_term:
+                    results = analyzer.search_tweets_by_content(search_term, 10)
+                    st.success(f"Found {len(results)} tweets mentioning '{search_term}'")
+                    
+                    if results:
+                        df_results = pd.DataFrame(results)
+                        st.dataframe(df_results)
+                else:
+                    st.error("Please specify what to search for.")
+            
+            else:
+                st.info("Try a more specific query like 'hashtag omicron' or 'find vaccine mentions'")
 
-def main():
-    # Sidebar navigation
-    st.sidebar.title("🦠 Navigation")
+def show_hashtag_analysis(analyzer):
+    """Show hashtag analysis."""
+    st.header("#️⃣ Hashtag Analysis")
     
-    # Load data button
-    if st.sidebar.button("🔄 Load Data", type="primary"):
-        with st.spinner("Loading data..."):
-            load_data()
-        if st.session_state.data_loaded:
-            st.sidebar.success("✅ Data loaded successfully!")
+    # Get trending hashtags
+    trending = analyzer.get_trending_hashtags(20)
+    
+    if trending:
+        # Create DataFrame for easier manipulation
+        df_trending = pd.DataFrame(trending)
+        
+        # Bar chart
+        if PLOTLY_AVAILABLE:
+            fig_bar = px.bar(
+                df_trending.head(10),
+                x='hashtag',
+                y='count',
+                title="Top 10 Hashtags by Frequency",
+                labels={'count': 'Number of Tweets', 'hashtag': 'Hashtag'}
+            )
+            fig_bar.update_xaxes(tickangle=45)
+            st.plotly_chart(fig_bar, use_container_width=True)
         else:
-            st.sidebar.error("❌ Failed to load data")
+            # Fallback to simple bar chart
+            st.bar_chart(df_trending.head(10).set_index('hashtag')['count'])
+        
+        # Full table
+        st.subheader("All Trending Hashtags")
+        st.dataframe(df_trending)
+        
+        # Hashtag selector
+        st.subheader("Explore Specific Hashtag")
+        selected_hashtag = st.selectbox("Select a hashtag to explore:", [h['hashtag'] for h in trending])
+        
+        if selected_hashtag:
+            tweets = analyzer.query_tweets_by_hashtag(selected_hashtag)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Total Tweets", len(tweets))
+            with col2:
+                if tweets:
+                    sentiments = [t['sentiment'] for t in tweets]
+                    sentiment_counts = pd.Series(sentiments).value_counts()
+                    most_common_sentiment = sentiment_counts.index[0]
+                    st.metric("Dominant Sentiment", most_common_sentiment)
+            
+            # Show sample tweets
+            if tweets:
+                st.subheader(f"Sample Tweets with #{selected_hashtag}")
+                for i, tweet in enumerate(tweets[:5]):
+                    with st.expander(f"Tweet {i+1}"):
+                        st.write(f"**User:** {tweet['user_name']}")
+                        st.write(f"**Sentiment:** {tweet['sentiment']}")
+                        st.write(f"**Tweet:** {tweet['tweet']}")
+
+def show_user_analysis(analyzer):
+    """Show user analysis."""
+    st.header("👤 User Analysis")
     
-    # Navigation options
-    pages = {
-        "Overview": overview_page,
-        "Interactive Query": interactive_query_page,
-        "Hashtag Analysis": hashtag_analysis_page,
-        "User Analysis": user_analysis_page,
-        "Sentiment Deep Dive": sentiment_deep_dive_page,
-        "RAG Chat": rag_chat_page
-    }
+    # Top users by tweet count
+    user_counts = analyzer.df['user_name'].value_counts().head(10)
     
-    # Page selection
-    selected_page = st.sidebar.selectbox("Choose a page:", list(pages.keys()), key="page_navigation_select")
+    fig_users = px.bar(
+        x=user_counts.values,
+        y=user_counts.index,
+        orientation='h',
+        title="Top 10 Most Active Users",
+        labels={'x': 'Number of Tweets', 'y': 'Username'}
+    )
+    st.plotly_chart(fig_users, use_container_width=True)
     
-    # Data status
-    if st.session_state.data_loaded:
-        st.sidebar.success(f"📊 Dataset: {len(st.session_state.df)} tweets loaded")
-    else:
-        st.sidebar.warning("📊 No data loaded")
+    # User search
+    st.subheader("Search for Specific User")
+    username_search = st.text_input("Enter username to search:")
     
-    # Run selected page
-    pages[selected_page]()
+    if username_search:
+        user_tweets = analyzer.get_user_tweets(username_search)
+        
+        if user_tweets:
+            st.success(f"Found {len(user_tweets)} tweets")
+            
+            # User stats
+            df_user = pd.DataFrame(user_tweets)
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Total Tweets", len(user_tweets))
+            with col2:
+                total_retweets = df_user['retweets'].sum()
+                st.metric("Total Retweets", total_retweets)
+            with col3:
+                total_favorites = df_user['favorites'].sum()
+                st.metric("Total Favorites", total_favorites)
+            
+            # Sentiment distribution for this user
+            sentiment_dist = df_user['sentiment'].value_counts()
+            fig_user_sentiment = px.pie(
+                values=sentiment_dist.values,
+                names=sentiment_dist.index,
+                title=f"Sentiment Distribution for {username_search}"
+            )
+            st.plotly_chart(fig_user_sentiment, use_container_width=True)
+            
+            # Show tweets
+            st.subheader("All Tweets")
+            st.dataframe(df_user)
+        else:
+            st.warning(f"No tweets found for user '{username_search}'")
+
+def show_sentiment_analysis(analyzer):
+    """Show detailed sentiment analysis."""
+    st.header("😊😐😢 Sentiment Deep Dive")
     
-    # Footer
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("**🔧 Built with:**")
-    st.sidebar.markdown("- Streamlit")
-    st.sidebar.markdown("- Pandas") 
-    st.sidebar.markdown("- Python 3.13")
+    # Overall sentiment metrics
+    sentiment_data = analyzer.analyze_sentiment_distribution()
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        positive_pct = (sentiment_data['sentiment_distribution'].get('positive', 0) / sentiment_data['total_tweets']) * 100
+        st.metric("Positive Tweets", f"{positive_pct:.1f}%")
+    
+    with col2:
+        neutral_pct = (sentiment_data['sentiment_distribution'].get('neutral', 0) / sentiment_data['total_tweets']) * 100
+        st.metric("Neutral Tweets", f"{neutral_pct:.1f}%")
+    
+    with col3:
+        negative_pct = (sentiment_data['sentiment_distribution'].get('negative', 0) / sentiment_data['total_tweets']) * 100
+        st.metric("Negative Tweets", f"{negative_pct:.1f}%")
+    
+    # Sentiment over time
+    # Ensure dates are properly parsed (if not already done)
+    if not pd.api.types.is_datetime64_any_dtype(analyzer.df['date']):
+        analyzer.df['date'] = pd.to_datetime(analyzer.df['date'], format='%d-%m-%Y %H:%M', errors='coerce')
+    analyzer.df['sentiment_label'] = analyzer.df['vader_sentiment'].apply(lambda x: x['label'])
+    
+    daily_sentiment = analyzer.df.groupby([
+        analyzer.df['date'].dt.date,
+        'sentiment_label'
+    ]).size().unstack(fill_value=0)
+    
+    fig_timeline_sentiment = px.line(
+        daily_sentiment,
+        title="Sentiment Over Time",
+        labels={'index': 'Date', 'value': 'Number of Tweets'}
+    )
+    st.plotly_chart(fig_timeline_sentiment, use_container_width=True)
+    
+    # Sentiment filter
+    st.subheader("Filter Tweets by Sentiment")
+    sentiment_filter = st.selectbox("Select sentiment:", ['positive', 'neutral', 'negative'])
+    
+    filtered_tweets = analyzer.df[analyzer.df['sentiment_label'] == sentiment_filter]
+    
+    st.write(f"Showing {len(filtered_tweets)} {sentiment_filter} tweets:")
+    
+    # Show sample tweets
+    for i, (_, row) in enumerate(filtered_tweets.head(5).iterrows()):
+        with st.expander(f"{sentiment_filter.title()} Tweet {i+1}"):
+            st.write(f"**User:** {row['user_name']}")
+            st.write(f"**Date:** {row['date']}")
+            st.write(f"**Tweet:** {row['text']}")
+            compound_score = row['vader_sentiment']['compound']
+            st.write(f"**Sentiment Score:** {compound_score:.3f}")
+
+def show_rag_chat(analyzer):
+    """Show RAG-powered chat interface."""
+    st.header("🤖 RAG-Powered Chat")
+    
+    if not analyzer.retrieval_chain:
+        st.warning("RAG functionality requires an Anthropic API key. Please set ANTHROPIC_API_KEY in your .env file.")
+        st.info("You can still use the other features of the application without the API key.")
+        return
+    
+    st.markdown("### Ask questions about the Omicron tweets data using AI!")
+    st.markdown("Examples: 'What are the main concerns about Omicron?', 'Which users are most worried about vaccines?'")
+    
+    # Initialize chat history
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    
+    # Display chat messages
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+    
+    # Chat input
+    if prompt := st.chat_input("Ask a question about the Omicron tweets..."):
+        # Add user message to chat history
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        # Generate response
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                response = analyzer.query_with_rag(prompt)
+                st.markdown(response)
+        
+        # Add assistant response to chat history
+        st.session_state.messages.append({"role": "assistant", "content": response})
 
 if __name__ == "__main__":
     main()
