@@ -1,17 +1,27 @@
-# Streamlit Cloud - Wheel-only packages (no source builds)
+# Core dependencies
 streamlit
 pandas
 numpy
+
+# Visualization
 plotly
 matplotlib
-seaborn
+wordcloud
+
+# Basic NLP and sentiment analysis
 textblob
 vaderSentiment
-nltk
 scikit-learn
+
+# Utilities
 python-dotenv
 requests
-wordcloud
-# Additional for RAG functionality
-sentence-transformers
-faiss-cpu
+
+# Optional advanced features (commented out to reduce dependencies)
+# langchain
+# langchain-community
+# sentence-transformers
+# faiss-cpu
+# langchain-google-genai
+# langchain-anthropic
+# langchain-openai

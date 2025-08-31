@@ -43,6 +43,8 @@ try:
     OLLAMA_AVAILABLE = True
 except ImportError:
     OLLAMA_AVAILABLE = False
+
+try:
     from langchain_community.llms import Cohere
     COHERE_AVAILABLE = True
 except ImportError:
@@ -89,19 +91,29 @@ class OmicronSentimentRAG:
         self.llm_provider = llm_provider
         self.vader_analyzer = SentimentIntensityAnalyzer()
         
-        # Initialize embeddings
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
-        )
+        # Initialize embeddings with error handling
+        try:
+            self.embeddings = HuggingFaceEmbeddings(
+                model_name="sentence-transformers/all-MiniLM-L6-v2"
+            )
+            print("✅ Embeddings initialized successfully")
+        except Exception as e:
+            print(f"⚠️ Embeddings initialization failed: {e}")
+            self.embeddings = None
         
         # Initialize LLM based on available API keys and provider preference
         self.llm = self._initialize_llm(anthropic_api_key, openai_api_key, google_api_key, 
                                        together_api_key, cohere_api_key, llm_provider)
         
         # Load and preprocess data
-        self.load_and_preprocess_data()
-        self.create_vector_store()
-        self.setup_retrieval_chain()
+        try:
+            self.load_and_preprocess_data()
+            self.create_vector_store()
+            self.setup_retrieval_chain()
+            print("✅ RAG system initialized successfully")
+        except Exception as e:
+            print(f"⚠️ RAG system initialization failed: {e}")
+            # Continue with partial initialization
     
     def _initialize_llm(self, anthropic_api_key: Optional[str], openai_api_key: Optional[str],
                        google_api_key: Optional[str], together_api_key: Optional[str],
