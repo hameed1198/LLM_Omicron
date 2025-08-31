@@ -420,8 +420,7 @@ def main():
     
     # Load data button
     if st.sidebar.button("🔄 Load Data", type="primary"):
-        with st.spinner("Loading data..."):
-            result = load_data()
+        result = load_data()
         if st.session_state.data_loaded:
             st.sidebar.success("✅ Data loaded!")
             st.rerun()

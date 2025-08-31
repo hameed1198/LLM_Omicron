@@ -34,7 +34,7 @@ try:
         sys.modules["simple_sentiment_analyzer"] = simple_module
         
 except Exception as e:
-    print(f"Module loading attempt failed: {e}")
+    pass  # Silent fallback
 
 # Import visualization libraries with error handling
 try:
@@ -133,7 +133,6 @@ def load_analyzer():
         return None
     
     if CORE_MODULE_AVAILABLE:
-        st.info("🤖 Loading advanced RAG-powered analyzer...")
         # Get API keys for different providers
         anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
         openai_api_key = os.getenv('OPENAI_API_KEY')
@@ -154,10 +153,8 @@ def load_analyzer():
             )
         except Exception as e:
             st.warning(f"⚠️ Failed to load advanced analyzer: {e}")
-            st.info("🔄 Falling back to simple analyzer...")
     
     if SIMPLE_ANALYZER_AVAILABLE:
-        st.info("📊 Loading simple sentiment analyzer...")
         try:
             return SimpleSentimentAnalyzer(csv_path=csv_path)
         except Exception as e:
@@ -212,8 +209,7 @@ def main():
         st.stop()
     
     # Load analyzer
-    with st.spinner("Loading data and initializing analysis system..."):
-        analyzer = load_analyzer()
+    analyzer = load_analyzer()
     
     if analyzer is None:
         st.error("Failed to load analysis system.")

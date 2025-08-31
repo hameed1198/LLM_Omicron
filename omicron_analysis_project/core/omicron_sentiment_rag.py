@@ -16,7 +16,7 @@ try:
     from langchain.prompts import PromptTemplate
     LANGCHAIN_AVAILABLE = True
 except ImportError as e:
-    print(f"LangChain not available: {e}")
+    # Output suppressed
     LANGCHAIN_AVAILABLE = False
 
 # LLM providers with fallbacks
@@ -96,9 +96,9 @@ class OmicronSentimentRAG:
             self.embeddings = HuggingFaceEmbeddings(
                 model_name="sentence-transformers/all-MiniLM-L6-v2"
             )
-            print("✅ Embeddings initialized successfully")
+            # Embeddings initialized successfully
         except Exception as e:
-            print(f"⚠️ Embeddings initialization failed: {e}")
+            # Embeddings initialization failed
             self.embeddings = None
         
         # Initialize LLM based on available API keys and provider preference
@@ -110,9 +110,9 @@ class OmicronSentimentRAG:
             self.load_and_preprocess_data()
             self.create_vector_store()
             self.setup_retrieval_chain()
-            print("✅ RAG system initialized successfully")
+            # RAG system initialized successfully
         except Exception as e:
-            print(f"⚠️ RAG system initialization failed: {e}")
+            # RAG system initialization failed
             # Continue with partial initialization
     
     def _initialize_llm(self, anthropic_api_key: Optional[str], openai_api_key: Optional[str],
@@ -122,7 +122,7 @@ class OmicronSentimentRAG:
         
         # 1. Specific provider selection
         if llm_provider == "claude" and anthropic_api_key:
-            print("🤖 Initializing Claude Sonnet...")
+            # Initializing Claude Sonnet...
             return ChatAnthropic(
                 model="claude-3-sonnet-20240229",
                 anthropic_api_key=anthropic_api_key,
@@ -130,7 +130,7 @@ class OmicronSentimentRAG:
             )
         
         elif llm_provider == "google" and google_api_key and GOOGLE_AVAILABLE:
-            print("🤖 Initializing Google Gemini (FREE)...")
+            # Initializing Google Gemini (FREE)...
             try:
                 return ChatGoogleGenerativeAI(
                     model="gemini-1.5-flash",
@@ -138,11 +138,11 @@ class OmicronSentimentRAG:
                     temperature=0.1
                 )
             except Exception as e:
-                print(f"⚠️ Failed to initialize Google Gemini: {e}")
+                # Failed to initialize Google Gemini
                 return None
         
         elif llm_provider == "together" and together_api_key and TOGETHER_AVAILABLE:
-            print("🤖 Initializing Together AI (FREE tier)...")
+            # Initializing Together AI
             try:
                 return Together(
                     model="meta-llama/Llama-2-7b-chat-hf",
@@ -150,22 +150,22 @@ class OmicronSentimentRAG:
                     temperature=0.1
                 )
             except Exception as e:
-                print(f"⚠️ Failed to initialize Together AI: {e}")
+                # Initialization failed
                 return None
         
         elif llm_provider == "cohere" and cohere_api_key and COHERE_AVAILABLE:
-            print("🤖 Initializing Cohere (FREE tier)...")
+            # Initializing Cohere
             try:
                 return Cohere(
                     cohere_api_key=cohere_api_key,
                     temperature=0.1
                 )
             except Exception as e:
-                print(f"⚠️ Failed to initialize Cohere: {e}")
+                # Initialization failed
                 return None
         
         elif llm_provider == "huggingface" and HUGGINGFACE_AVAILABLE:
-            print("🤖 Initializing HuggingFace Local Model (FREE)...")
+            # Initializing HuggingFace
             try:
                 # Use a smaller, free local model
                 pipe = pipeline("text-generation", 
@@ -174,11 +174,11 @@ class OmicronSentimentRAG:
                               max_new_tokens=200)
                 return HuggingFacePipeline(pipeline=pipe)
             except Exception as e:
-                print(f"⚠️ Failed to initialize HuggingFace: {e}")
+                # Initialization failed
                 return None
         
         elif llm_provider == "openai" and openai_api_key and OPENAI_AVAILABLE:
-            print("🤖 Initializing OpenAI GPT...")
+            # Initializing OpenAI GPT
             return ChatOpenAI(
                 model="gpt-3.5-turbo",
                 openai_api_key=openai_api_key,
@@ -186,20 +186,20 @@ class OmicronSentimentRAG:
             )
         
         elif llm_provider == "ollama" and OLLAMA_AVAILABLE:
-            print("🤖 Initializing Ollama (local)...")
+            # Initializing Ollama
             try:
                 return Ollama(model="llama2")
             except Exception as e:
-                print(f"⚠️ Failed to initialize Ollama: {e}")
+                # Initialization failed
                 return None
         
         elif llm_provider == "auto":
             # Auto-detect best available option (prioritize FREE options)
-            print("🔍 Auto-detecting available LLM providers...")
+            # Auto-detecting providers
             
             # Priority 1: Google Gemini (FREE with generous limits)
             if google_api_key and GOOGLE_AVAILABLE:
-                print("🤖 Auto-detected: Using Google Gemini (FREE)...")
+                # Using Google Gemini
                 try:
                     return ChatGoogleGenerativeAI(
                         model="gemini-1.5-flash",
@@ -207,11 +207,11 @@ class OmicronSentimentRAG:
                         temperature=0.1
                     )
                 except Exception as e:
-                    print(f"⚠️ Failed to initialize Google Gemini: {e}")
+                    # Initialization failed
             
             # Priority 2: Together AI (FREE tier)
             if together_api_key and TOGETHER_AVAILABLE:
-                print("🤖 Auto-detected: Using Together AI (FREE tier)...")
+                # Using Together AI
                 try:
                     return Together(
                         model="meta-llama/Llama-2-7b-chat-hf",
@@ -219,7 +219,7 @@ class OmicronSentimentRAG:
                         temperature=0.1
                     )
                 except Exception as e:
-                    print(f"⚠️ Failed to initialize Together AI: {e}")
+                    # Initialization failed
             
             # Priority 3: Cohere (FREE tier)
             if cohere_api_key and COHERE_AVAILABLE:
@@ -230,7 +230,7 @@ class OmicronSentimentRAG:
                         temperature=0.1
                     )
                 except Exception as e:
-                    print(f"⚠️ Failed to initialize Cohere: {e}")
+                    # Initialization failed
             
             # Priority 4: HuggingFace Local (Completely FREE)
             if HUGGINGFACE_AVAILABLE:
@@ -242,7 +242,7 @@ class OmicronSentimentRAG:
                                   max_new_tokens=200)
                     return HuggingFacePipeline(pipeline=pipe)
                 except Exception as e:
-                    print(f"⚠️ Failed to initialize HuggingFace: {e}")
+                    # Initialization failed
             
             # Priority 5: Ollama (Local, FREE but requires setup)
             if OLLAMA_AVAILABLE:
@@ -252,7 +252,7 @@ class OmicronSentimentRAG:
                     requests.get("http://localhost:11434/api/tags", timeout=5)
                     return Ollama(model="llama2")
                 except Exception as e:
-                    print(f"⚠️ Ollama not available: {e}")
+                    # Initialization failed
                     print("💡 To use Ollama: Install from https://ollama.ai and run 'ollama pull llama2'")
             
             # Priority 6: Anthropic Claude (PAID)
@@ -265,7 +265,7 @@ class OmicronSentimentRAG:
                         temperature=0.1
                     )
                 except Exception as e:
-                    print(f"⚠️ Failed to initialize Claude: {e}")
+                    # Initialization failed
             
             # Priority 7: OpenAI (PAID, but has some free credits)
             if openai_api_key and OPENAI_AVAILABLE:
@@ -277,7 +277,7 @@ class OmicronSentimentRAG:
                         temperature=0.1
                     )
                 except Exception as e:
-                    print(f"⚠️ Failed to initialize OpenAI: {e}")
+                    # Initialization failed
             
             print("⚠️ No LLM provider available. RAG features will be disabled.")
             print("💡 FREE OPTIONS:")
@@ -288,7 +288,7 @@ class OmicronSentimentRAG:
             return None
         
         else:
-            print(f"⚠️ LLM provider '{llm_provider}' not available or no API key provided.")
+            # Initialization failed
             return None
     
     def load_and_preprocess_data(self):
@@ -324,8 +324,8 @@ class OmicronSentimentRAG:
         self.df['textblob_sentiment'] = self.df['clean_text'].apply(self.get_textblob_sentiment)
         self.df['vader_sentiment'] = self.df['clean_text'].apply(self.get_vader_sentiment)
         
-        print(f"Loaded {len(self.df)} tweets successfully!")
-        print(f"Columns: {self.df.columns.tolist()}")
+        # Output suppressed
+        # Output suppressed
     
     def clean_text(self, text: str) -> str:
         """Clean tweet text for analysis."""
@@ -407,7 +407,7 @@ class OmicronSentimentRAG:
         # Create vector store
         self.vector_store = FAISS.from_documents(split_docs, self.embeddings)
         
-        print(f"Created vector store with {len(split_docs)} document chunks!")
+        # Output suppressed
     
     def setup_retrieval_chain(self):
         """Setup the retrieval chain for RAG."""
@@ -602,11 +602,11 @@ def main():
     
     print("🦠 OMICRON SENTIMENT ANALYSIS WITH MULTI-LLM SUPPORT")
     print("=" * 60)
-    print(f"Available API keys:")
-    print(f"  - Anthropic (Claude): {'✅' if anthropic_key else '❌'}")
-    print(f"  - OpenAI (GPT/Copilot): {'✅' if openai_key else '❌'}")
-    print(f"  - Local Ollama: {'✅' if OLLAMA_AVAILABLE else '❌'}")
-    print(f"Selected provider: {llm_provider}")
+    # Output suppressed
+    # Output suppressed
+    # Output suppressed
+    # Output suppressed
+    # Output suppressed
     
     try:
         analyzer = OmicronSentimentRAG(
@@ -632,27 +632,27 @@ def main():
         # Query 1: Users who tweeted with hashtag omicron
         print("\n1. Users who tweeted with hashtag 'omicron':")
         omicron_tweets = analyzer.query_tweets_by_hashtag("omicron")
-        print(f"Found {len(omicron_tweets)} tweets with #omicron")
+        # Output suppressed
         
         for i, tweet in enumerate(omicron_tweets[:5]):  # Show first 5
-            print(f"\n  Tweet {i+1}:")
-            print(f"    User: {tweet['user_name']}")
-            print(f"    Location: {tweet['user_location']}")
-            print(f"    Sentiment: {tweet['sentiment']}")
-            print(f"    Tweet: {tweet['tweet'][:100]}...")
+            # Output suppressed
+            # Output suppressed
+            # Output suppressed
+            # Output suppressed
+            # Output suppressed
         
         # Query 2: Search for specific content
-        print(f"\n2. Tweets mentioning 'vaccine':")
+        # Output suppressed
         vaccine_tweets = analyzer.search_tweets_by_content("vaccine", 3)
         for i, tweet in enumerate(vaccine_tweets):
-            print(f"\n  Tweet {i+1}:")
-            print(f"    User: {tweet['user_name']}")
-            print(f"    Sentiment: {tweet['sentiment']}")
-            print(f"    Tweet: {tweet['tweet'][:100]}...")
+            # Output suppressed
+            # Output suppressed
+            # Output suppressed
+            # Output suppressed
         
         # RAG demonstration
         if analyzer.llm:
-            print(f"\n3. AI-Powered Analysis (using {analyzer.llm.__class__.__name__}):")
+            # Output suppressed
             sample_questions = [
                 "What are the main concerns about Omicron in these tweets?",
                 "Which users are most active in discussing vaccines?",
@@ -660,12 +660,12 @@ def main():
             ]
             
             for question in sample_questions[:1]:  # Just show one example
-                print(f"\n   Question: {question}")
+                # Output suppressed
                 try:
                     response = analyzer.query_with_rag(question)
-                    print(f"   AI Response: {response[:200]}...")
+                    # Output suppressed
                 except Exception as e:
-                    print(f"   Error: {e}")
+                    # Output suppressed
         
         # Interactive mode
         print("\n" + "="*60)
@@ -701,18 +701,18 @@ def main():
                     
                     if hashtag:
                         results = analyzer.query_tweets_by_hashtag(hashtag)
-                        print(f"\nFound {len(results)} tweets with hashtag '{hashtag}':")
+                        # Output suppressed
                         for i, tweet in enumerate(results[:3]):
-                            print(f"\n  {i+1}. {tweet['user_name']}: {tweet['tweet'][:100]}...")
+                            # Output suppressed
                     else:
                         print("Please specify a hashtag to search for.")
                 
                 elif 'sentiment' in question.lower():
                     sentiment_type = 'positive' if 'positive' in question.lower() else 'negative' if 'negative' in question.lower() else 'neutral'
                     sentiment_tweets = analyzer.df[analyzer.df['vader_sentiment'].apply(lambda x: x['label']) == sentiment_type]
-                    print(f"\nShowing {sentiment_type} sentiment tweets:")
+                    # Output suppressed
                     for i, (_, row) in enumerate(sentiment_tweets.head(3).iterrows()):
-                        print(f"\n  {i+1}. {row['user_name']}: {row['text'][:100]}...")
+                        # Output suppressed
                 
                 elif any(word in question.lower() for word in ['find', 'search', 'mention']):
                     # Extract search term
@@ -726,9 +726,9 @@ def main():
                     
                     if search_term:
                         results = analyzer.search_tweets_by_content(search_term, 3)
-                        print(f"\nTweets mentioning '{search_term}':")
+                        # Output suppressed
                         for i, tweet in enumerate(results):
-                            print(f"\n  {i+1}. {tweet['user_name']}: {tweet['tweet'][:100]}...")
+                            # Output suppressed
                     else:
                         print("Please specify what to search for (e.g., hospital, vaccine, etc.)")
                 
@@ -736,7 +736,7 @@ def main():
                     # Try RAG if available
                     if analyzer.retrieval_chain:
                         response = analyzer.query_with_rag(question)
-                        print(f"\nRAG Response: {response}")
+                        # Output suppressed
                     else:
                         print("For advanced queries, please provide an Anthropic API key.")
                         print("Available simple queries: hashtag searches, sentiment analysis, content search")
@@ -745,10 +745,10 @@ def main():
                 print("\nExiting...")
                 break
             except Exception as e:
-                print(f"Error: {e}")
+                # Output suppressed
     
     except Exception as e:
-        print(f"Error initializing system: {e}")
+        # Output suppressed
 
 if __name__ == "__main__":
     main()

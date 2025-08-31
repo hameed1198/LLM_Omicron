@@ -25,11 +25,8 @@ class SimpleSentimentAnalyzer:
     
     def load_and_preprocess_data(self):
         """Load and preprocess the CSV data."""
-        print("Loading and preprocessing data...")
-        
         # Load the CSV file
         self.df = pd.read_csv(self.csv_path)
-        print(f"Loaded {len(self.df)} tweets successfully!")
         
         # Clean and preprocess text
         if 'text' in self.df.columns:
@@ -38,7 +35,7 @@ class SimpleSentimentAnalyzer:
         # Perform sentiment analysis
         self.analyze_sentiment()
         
-        print("Data preprocessing complete!")
+        # Data preprocessing complete
     
     def clean_text(self, text):
         """Clean tweet text."""
@@ -64,8 +61,6 @@ class SimpleSentimentAnalyzer:
     
     def analyze_sentiment(self):
         """Perform sentiment analysis using VADER and TextBlob."""
-        print("Performing sentiment analysis...")
-        
         # VADER sentiment analysis
         vader_scores = []
         textblob_scores = []
