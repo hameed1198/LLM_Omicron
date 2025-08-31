@@ -7,8 +7,34 @@ import os
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 core_dir = os.path.join(parent_dir, 'core')
+
+# Add paths for imports
 sys.path.insert(0, core_dir)
 sys.path.insert(0, parent_dir)
+
+# Also try absolute path for Streamlit Cloud
+try:
+    # For Streamlit Cloud deployment
+    import importlib.util
+    
+    # Try to import core modules using absolute paths
+    rag_module_path = os.path.join(core_dir, 'omicron_sentiment_rag.py')
+    simple_module_path = os.path.join(core_dir, 'simple_sentiment_analyzer.py')
+    
+    if os.path.exists(rag_module_path):
+        spec = importlib.util.spec_from_file_location("omicron_sentiment_rag", rag_module_path)
+        rag_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rag_module)
+        sys.modules["omicron_sentiment_rag"] = rag_module
+    
+    if os.path.exists(simple_module_path):
+        spec = importlib.util.spec_from_file_location("simple_sentiment_analyzer", simple_module_path)
+        simple_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(simple_module)
+        sys.modules["simple_sentiment_analyzer"] = simple_module
+        
+except Exception as e:
+    print(f"Module loading attempt failed: {e}")
 
 # Import visualization libraries with error handling
 try:
@@ -28,20 +54,43 @@ except ImportError as e:
     WORDCLOUD_AVAILABLE = False
 
 # Import core module with error handling
+CORE_MODULE_AVAILABLE = False
+SIMPLE_ANALYZER_AVAILABLE = False
+
 try:
     from omicron_sentiment_rag import OmicronSentimentRAG
     CORE_MODULE_AVAILABLE = True
+    print("✅ Advanced RAG module loaded successfully")
 except ImportError as e:
     print(f"Advanced RAG module not available: {e}")
-    CORE_MODULE_AVAILABLE = False
+    try:
+        # Try alternative import paths
+        import sys
+        sys.path.append('/mount/src/llm_omicron/omicron_analysis_project/core')
+        from omicron_sentiment_rag import OmicronSentimentRAG
+        CORE_MODULE_AVAILABLE = True
+        print("✅ Advanced RAG module loaded via alternative path")
+    except ImportError as e2:
+        print(f"Alternative RAG import also failed: {e2}")
 
 # Fallback to simple analyzer
 try:
     from simple_sentiment_analyzer import SimpleSentimentAnalyzer
     SIMPLE_ANALYZER_AVAILABLE = True
+    print("✅ Simple analyzer module loaded successfully")
 except ImportError as e:
     print(f"Simple analyzer not available: {e}")
-    SIMPLE_ANALYZER_AVAILABLE = False
+    try:
+        # Try alternative import paths
+        from simple_sentiment_analyzer import SimpleSentimentAnalyzer
+        SIMPLE_ANALYZER_AVAILABLE = True
+        print("✅ Simple analyzer loaded via alternative path")
+    except ImportError as e2:
+        print(f"Alternative simple analyzer import also failed: {e2}")
+
+# If no modules available, use demo mode
+if not CORE_MODULE_AVAILABLE and not SIMPLE_ANALYZER_AVAILABLE:
+    print("⚠️ Using demo mode - no analysis modules available")
 
 try:
     from dotenv import load_dotenv
@@ -59,11 +108,27 @@ st.set_page_config(
 @st.cache_resource
 def load_analyzer():
     """Load the sentiment analyzer with caching for resources like LLM connections."""
-    csv_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'omicron_2025.csv')
+    # Try multiple possible data file locations
+    possible_data_paths = [
+        os.path.join(os.path.dirname(__file__), '..', 'data', 'omicron_2025.csv'),
+        os.path.join(os.path.dirname(__file__), '..', 'omicron_2025.csv'),
+        os.path.join('data', 'omicron_2025.csv'),
+        'omicron_2025.csv',
+        os.path.join('/mount/src/llm_omicron/omicron_analysis_project/data', 'omicron_2025.csv'),  # Streamlit Cloud path
+    ]
+    
+    csv_path = None
+    for path in possible_data_paths:
+        if os.path.exists(path):
+            csv_path = path
+            st.success(f"✅ Data file found at: {path}")
+            break
     
     # Check if CSV file exists
-    if not os.path.exists(csv_path):
-        st.error(f"❌ Data file not found at: {csv_path}")
+    if not csv_path:
+        st.error(f"❌ Data file not found. Tried paths:")
+        for path in possible_data_paths:
+            st.write(f"  - {path} (exists: {os.path.exists(path)})")
         st.info("Please ensure the data file exists in the repository.")
         return None
     
@@ -107,11 +172,11 @@ def main():
     st.markdown("### Analyzing COVID-19 Omicron variant discussions on Twitter using AI")
     
     # Show library status
-    st.sidebar.header("📦 Library Status")
-    st.sidebar.write(f"📊 Plotly: {'✅' if PLOTLY_AVAILABLE else '❌'}")
-    st.sidebar.write(f"☁️ WordCloud: {'✅' if WORDCLOUD_AVAILABLE else '❌'}")
-    st.sidebar.write(f"🧠 Advanced RAG: {'✅' if CORE_MODULE_AVAILABLE else '❌'}")
-    st.sidebar.write(f"📈 Simple Analyzer: {'✅' if SIMPLE_ANALYZER_AVAILABLE else '❌'}")
+    # st.sidebar.header("📦 Library Status")
+    # st.sidebar.write(f"📊 Plotly: {'✅' if PLOTLY_AVAILABLE else '❌'}")
+    # st.sidebar.write(f"☁️ WordCloud: {'✅' if WORDCLOUD_AVAILABLE else '❌'}")
+    # st.sidebar.write(f"🧠 Advanced RAG: {'✅' if CORE_MODULE_AVAILABLE else '❌'}")
+    # st.sidebar.write(f"📈 Simple Analyzer: {'✅' if SIMPLE_ANALYZER_AVAILABLE else '❌'}")
     
     # Check if any analyzer is available
     if not CORE_MODULE_AVAILABLE and not SIMPLE_ANALYZER_AVAILABLE:

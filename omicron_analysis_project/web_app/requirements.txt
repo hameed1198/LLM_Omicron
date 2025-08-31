@@ -1,0 +1,31 @@
+# Streamlit Cloud - Essential packages only
+streamlit
+pandas
+numpy
+plotly
+matplotlib
+seaborn
+textblob
+vaderSentiment
+nltk
+scikit-learn
+python-dotenv
+requests
+wordcloud
+
+# RAG and LangChain dependencies
+langchain
+langchain-community
+langchain-core
+sentence-transformers
+faiss-cpu
+
+# LLM Provider packages  
+langchain-google-genai
+langchain-anthropic
+langchain-openai
+langchain-cohere
+
+# Additional dependencies for RAG
+tiktoken
+chromadb
