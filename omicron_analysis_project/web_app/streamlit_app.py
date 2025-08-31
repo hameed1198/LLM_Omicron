@@ -121,7 +121,6 @@ def load_analyzer():
     for path in possible_data_paths:
         if os.path.exists(path):
             csv_path = path
-            st.success(f"✅ Data file found at: {path}")
             break
     
     # Check if CSV file exists
