@@ -27,6 +27,37 @@ try:
 except ImportError:
     RAG_AVAILABLE = False
 
+# Check for additional LLM providers
+try:
+    from langchain_anthropic import ChatAnthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    ANTHROPIC_AVAILABLE = False
+
+try:
+    from langchain_openai import ChatOpenAI  
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+
+try:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    GOOGLE_AVAILABLE = True  
+except ImportError:
+    GOOGLE_AVAILABLE = False
+
+try:
+    from langchain_community.llms import Ollama
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
+
+try:
+    from langchain_community.llms import Cohere
+    COHERE_AVAILABLE = True
+except ImportError:
+    COHERE_AVAILABLE = False
+
 # Page config
 st.set_page_config(
     page_title="Omicron Sentiment Analysis",
@@ -83,38 +114,8 @@ def load_data():
         return None
 
 def initialize_rag_system():
-    """Initialize the RAG system if available"""
-    if not RAG_AVAILABLE:
-        return None
-    
-    try:
-        # Look for API keys
-        google_api_key = os.getenv('GOOGLE_API_KEY', 'AIzaSyC9WVZri_Gas_scMlkk-OeveNCkR5LMLCc')
-        
-        # Find CSV path
-        csv_path = None
-        possible_paths = [
-            'omicron_2025.csv',
-            'data/omicron_2025.csv',
-            os.path.join('data', 'omicron_2025.csv')
-        ]
-        
-        for path in possible_paths:
-            if os.path.exists(path):
-                csv_path = path
-                break
-        
-        if csv_path:
-            rag_system = OmicronSentimentRAG(
-                csv_path=csv_path,
-                google_api_key=google_api_key,
-                llm_provider="google"
-            )
-            st.session_state.rag_system = rag_system
-            return rag_system
-    except Exception as e:
-        st.warning(f"RAG system initialization failed: {e}")
-        return None
+    """Initialize the RAG system with default Google Gemini model"""
+    return initialize_rag_system_with_model("google", "AIzaSyC9WVZri_Gas_scMlkk-OeveNCkR5LMLCc")
 
 def overview_page():
     """Overview page with real data including timeline and word cloud"""
@@ -588,86 +589,296 @@ def sentiment_deep_dive_page():
         st.warning("Sentiment analyzer not available. Please ensure data is properly loaded.")
 
 def rag_chat_page():
-    """RAG Chat interface with real functionality"""
-    st.title("🤖 RAG Chat")
-    st.markdown("Chat with your omicron dataset using AI")
+    """RAG Chat interface with comprehensive model selection"""
+    st.title("🤖 RAG Chat - AI-Powered Tweet Analysis")
+    st.markdown("Chat with your omicron dataset using state-of-the-art AI models")
     
     if not st.session_state.data_loaded:
         st.warning("⚠️ Please load data first from the Overview page")
         return
     
-    # Initialize RAG system if not already done
-    if st.session_state.rag_system is None and RAG_AVAILABLE:
-        with st.spinner("Initializing RAG system..."):
-            st.session_state.rag_system = initialize_rag_system()
+    # Model selection and configuration
+    st.subheader("🔧 AI Model Configuration")
+    
+    # Available models with status
+    available_models = {
+        "Google Gemini": {
+            "id": "google",
+            "status": "✅ FREE - Generous limits", 
+            "description": "Google's latest multimodal AI - Best for comprehensive analysis",
+            "api_key": "AIzaSyC9WVZri_Gas_scMlkk-OeveNCkR5LMLCc",
+            "available": RAG_AVAILABLE and GOOGLE_AVAILABLE
+        },
+        "Claude Sonnet": {
+            "id": "claude", 
+            "status": "💳 Paid - High quality",
+            "description": "Anthropic's reasoning model - Excellent for nuanced analysis",
+            "api_key": None,
+            "available": RAG_AVAILABLE and ANTHROPIC_AVAILABLE
+        },
+        "OpenAI GPT": {
+            "id": "openai",
+            "status": "💳 Paid - Popular choice", 
+            "description": "OpenAI's ChatGPT - Versatile and well-rounded",
+            "api_key": None,
+            "available": RAG_AVAILABLE and OPENAI_AVAILABLE
+        },
+        "Ollama Local": {
+            "id": "ollama",
+            "status": "🔒 Local - Privacy focused",
+            "description": "Run models locally - No internet required",
+            "api_key": None,
+            "available": RAG_AVAILABLE and OLLAMA_AVAILABLE
+        },
+        "Cohere": {
+            "id": "cohere",
+            "status": "🆓 FREE tier available",
+            "description": "Cohere's language model - Good for text analysis",
+            "api_key": None,
+            "available": RAG_AVAILABLE and COHERE_AVAILABLE
+        }
+    }
+    
+    # Display model options
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        selected_model = st.selectbox(
+            "Choose AI Model:",
+            options=list(available_models.keys()),
+            format_func=lambda x: f"{x} - {available_models[x]['status']}",
+            key="rag_model_select"
+        )
+    
+    with col2:
+        if st.button("🔄 Initialize Model", type="primary", key="init_selected_model_btn"):
+            model_config = available_models[selected_model]
+            if model_config['available']:
+                with st.spinner(f"Initializing {selected_model}..."):
+                    st.session_state.rag_system = initialize_rag_system_with_model(
+                        model_config['id'], 
+                        model_config['api_key']
+                    )
+                if st.session_state.rag_system:
+                    st.success(f"✅ {selected_model} initialized successfully!")
+                    st.rerun()
+                else:
+                    st.error(f"❌ Failed to initialize {selected_model}")
+            else:
+                st.error(f"❌ {selected_model} not available")
+    
+    # Model details
+    with st.expander(f"📋 About {selected_model}", expanded=False):
+        model_info = available_models[selected_model]
+        st.markdown(f"**Description:** {model_info['description']}")
+        st.markdown(f"**Status:** {model_info['status']}")
+        st.markdown(f"**Available:** {'✅ Yes' if model_info['available'] else '❌ No'}")
+        
+        if selected_model == "Google Gemini":
+            st.markdown("**Features:**")
+            st.markdown("- 🆓 Free with generous usage limits")
+            st.markdown("- 🚀 Fast response times")
+            st.markdown("- 🎯 Excellent for sentiment analysis")
+            st.markdown("- 📊 Good at data interpretation")
+            
+        elif selected_model == "Claude Sonnet":
+            st.markdown("**Features:**")
+            st.markdown("- 🧠 Superior reasoning capabilities")
+            st.markdown("- 📝 Excellent for complex analysis")
+            st.markdown("- 🎯 Nuanced understanding")
+            st.markdown("- 💡 Creative insights")
+            
+        elif selected_model == "OpenAI GPT":
+            st.markdown("**Features:**")
+            st.markdown("- 🌟 Most popular AI model")
+            st.markdown("- 🔄 Versatile and reliable")
+            st.markdown("- 🎯 Good general performance")
+            st.markdown("- 📚 Extensive training data")
+    
+    # RAG System Status
+    st.subheader("🔍 RAG System Status")
     
     if st.session_state.rag_system:
-        st.success("✅ RAG system initialized and ready!")
+        st.success(f"✅ RAG system active with {selected_model}")
         
-        # Chat interface
-        st.subheader("💬 Ask Questions About Your Data")
-        
-        # Predefined example questions
-        col1, col2 = st.columns(2)
+        # System capabilities
+        col1, col2, col3 = st.columns(3)
         with col1:
-            if st.button("What are the top hashtags?", key="hashtags_question_btn"):
-                st.session_state.user_question = "What are the top trending hashtags in the omicron tweets?"
+            st.metric("Vector Store", "✅ Ready")
+        with col2:
+            st.metric("Embeddings", "✅ HuggingFace")
+        with col3:
+            st.metric("Model", f"✅ {selected_model}")
+        
+        # Chat Interface
+        st.subheader("💬 Interactive Chat")
+        
+        # Quick action buttons
+        st.markdown("**🚀 Quick Questions:**")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("📈 Trending Topics", key="trending_topics_btn"):
+                st.session_state.user_question = "What are the main topics and trending hashtags in the omicron tweets? Provide insights on what people are discussing most."
         
         with col2:
-            if st.button("Show negative sentiment analysis", key="negative_sentiment_btn"):
-                st.session_state.user_question = "Analyze the negative sentiment tweets about omicron. What are people concerned about?"
+            if st.button("😷 Sentiment Analysis", key="sentiment_analysis_btn"):
+                st.session_state.user_question = "Analyze the overall sentiment towards omicron. What are people's main concerns and positive aspects mentioned?"
         
-        # User input
+        with col3:
+            if st.button("👥 User Insights", key="user_insights_btn"):
+                st.session_state.user_question = "Who are the most influential users discussing omicron? What patterns do you see in user behavior and engagement?"
+        
+        # Advanced questions
+        with st.expander("🔬 Advanced Analysis Questions", expanded=False):
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🌍 Geographic Patterns", key="geo_patterns_btn"):
+                    st.session_state.user_question = "Are there any geographic or regional patterns in how omicron is being discussed?"
+                if st.button("📅 Timeline Analysis", key="timeline_analysis_btn"):
+                    st.session_state.user_question = "How has the conversation about omicron evolved over time? What changes do you notice?"
+            
+            with col2:
+                if st.button("🔗 Network Analysis", key="network_analysis_btn"):
+                    st.session_state.user_question = "Analyze the retweet and mention patterns. Who are the key influencers and how is information spreading?"
+                if st.button("📊 Engagement Metrics", key="engagement_metrics_btn"):
+                    st.session_state.user_question = "Which types of omicron-related content get the most engagement? What drives virality?"
+        
+        # Custom question input
         user_question = st.text_input(
-            "Ask a question about the omicron tweets:",
+            "💭 Ask your own question:",
             value=st.session_state.get('user_question', ''),
-            placeholder="e.g., Which users are most influential? What are people saying about vaccines?",
-            key="rag_question_input"
+            placeholder="e.g., What are the main misconceptions about omicron in the tweets?",
+            key="rag_custom_question_input"
         )
         
+        # Process question
         if user_question:
-            with st.spinner("Analyzing your question..."):
+            st.markdown("---")
+            st.markdown(f"**❓ Your Question:** {user_question}")
+            
+            with st.spinner(f"🤖 {selected_model} is analyzing your data..."):
                 try:
-                    # Use your RAG system
+                    # Use the RAG system
                     response = st.session_state.rag_system.query_with_rag(user_question)
                     
-                    st.markdown("**🤖 AI Response:**")
+                    st.markdown(f"**🤖 {selected_model} Response:**")
                     st.markdown(response)
                     
-                except Exception as e:
-                    st.error(f"Error processing question: {e}")
+                    # Add follow-up suggestions
+                    st.markdown("**🔄 Follow-up suggestions:**")
+                    suggestions = [
+                        "Can you provide more specific examples?",
+                        "What are the implications of these findings?",
+                        "How does this compare to other topics in the dataset?",
+                        "Can you quantify these insights with numbers?"
+                    ]
                     
-                    # Fallback to basic analysis
-                    analyzer = st.session_state.analyzer
-                    if analyzer:
-                        fallback_response = analyzer.query_rag(user_question)
-                        st.markdown("**📊 Basic Analysis:**")
-                        st.markdown(fallback_response['answer'])
+                    suggestion_cols = st.columns(2)
+                    for i, suggestion in enumerate(suggestions):
+                        with suggestion_cols[i % 2]:
+                            if st.button(suggestion, key=f"followup_{i}"):
+                                st.session_state.user_question = f"{user_question} {suggestion}"
+                                st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"❌ Error processing question: {e}")
+                    
+                    # Fallback analysis
+                    if st.session_state.analyzer:
+                        st.markdown("**📊 Fallback Analysis:**")
+                        with st.spinner("Using basic analysis..."):
+                            try:
+                                fallback_response = st.session_state.analyzer.query_rag(user_question)
+                                st.markdown(fallback_response.get('answer', 'Analysis could not be completed.'))
+                            except Exception as fallback_error:
+                                st.error(f"Fallback analysis also failed: {fallback_error}")
     
     elif RAG_AVAILABLE:
-        st.warning("🔄 RAG system not initialized. Click the button below to set it up.")
-        if st.button("Initialize RAG System", key="init_rag_btn"):
-            with st.spinner("Setting up RAG system..."):
-                st.session_state.rag_system = initialize_rag_system()
-            st.rerun()
+        st.warning("🔄 RAG system not initialized. Select a model above and click 'Initialize Model'.")
+        
+        # Show what's needed for each model
+        st.subheader("🔑 Model Requirements")
+        
+        for model_name, config in available_models.items():
+            with st.expander(f"Setup {model_name}"):
+                if config['api_key']:
+                    st.success(f"✅ API key available for {model_name}")
+                else:
+                    st.warning(f"⚠️ API key needed for {model_name}")
+                
+                if model_name == "Google Gemini":
+                    st.markdown("**How to get Google Gemini API key:**")
+                    st.markdown("1. Visit [Google AI Studio](https://makersuite.google.com/app/apikey)")
+                    st.markdown("2. Sign in with Google account")
+                    st.markdown("3. Create new API key")
+                    st.markdown("4. Copy and paste in the configuration")
+                
+                elif model_name == "Claude Sonnet":
+                    st.markdown("**How to get Claude API key:**")
+                    st.markdown("1. Visit [Anthropic Console](https://console.anthropic.com/)")
+                    st.markdown("2. Create account and verify")
+                    st.markdown("3. Go to API Keys section")
+                    st.markdown("4. Generate new key")
+                
+                elif model_name == "OpenAI GPT":
+                    st.markdown("**How to get OpenAI API key:**")
+                    st.markdown("1. Visit [OpenAI Platform](https://platform.openai.com/api-keys)")
+                    st.markdown("2. Sign in or create account")
+                    st.markdown("3. Navigate to API keys")
+                    st.markdown("4. Create new secret key")
     
     else:
-        st.info("🚧 **RAG Chat Not Available**")
+        st.error("🚧 **RAG System Unavailable**")
         st.markdown("""
         The RAG (Retrieval Augmented Generation) system requires additional dependencies.
         
-        **Available AI Models:**
-        - Google Gemini ✅ (API key provided)
-        - Claude Sonnet
-        - OpenAI GPT
-        - Hugging Face Models
+        **Missing Components:**
+        - LangChain framework
+        - Vector database (FAISS)
+        - Embeddings model
+        - LLM providers
         
-        **Basic Analysis Available:**
-        - Use other tabs for detailed analysis
-        - Sentiment analysis
-        - Hashtag trending
-        - User analysis
+        **Alternative Analysis:**
+        Use other tabs for comprehensive analysis without AI chat.
         """)
+
+def initialize_rag_system_with_model(model_id: str, api_key: str = None):
+    """Initialize RAG system with specific model"""
+    if not RAG_AVAILABLE:
+        return None
+    
+    try:
+        # Use the provided API key or fallback
+        if model_id == "google":
+            google_api_key = api_key or os.getenv('GOOGLE_API_KEY', 'AIzaSyC9WVZri_Gas_scMlkk-OeveNCkR5LMLCc')
+        else:
+            google_api_key = None
+        
+        # Find CSV path
+        csv_path = None
+        possible_paths = [
+            'omicron_2025.csv',
+            'data/omicron_2025.csv',
+            os.path.join('data', 'omicron_2025.csv'),
+            os.path.join(os.path.dirname(__file__), 'omicron_2025.csv')
+        ]
+        
+        for path in possible_paths:
+            if os.path.exists(path):
+                csv_path = path
+                break
+        
+        if csv_path:
+            rag_system = OmicronSentimentRAG(
+                csv_path=csv_path,
+                google_api_key=google_api_key,
+                llm_provider=model_id
+            )
+            return rag_system
+    except Exception as e:
+        st.error(f"RAG system initialization failed: {e}")
+        return None
 
 def main():
     # Sidebar navigation
@@ -711,6 +922,20 @@ def main():
     st.sidebar.markdown("**🔧 System Status:**")
     st.sidebar.markdown(f"- Analyzer: {'✅' if ANALYZER_AVAILABLE else '❌'}")
     st.sidebar.markdown(f"- RAG System: {'✅' if RAG_AVAILABLE else '❌'}")
+    
+    # RAG Models Status
+    if RAG_AVAILABLE:
+        st.sidebar.markdown("**🤖 Available AI Models:**")
+        st.sidebar.markdown(f"- Google Gemini: {'✅' if GOOGLE_AVAILABLE else '❌'}")
+        st.sidebar.markdown(f"- Claude Sonnet: {'✅' if ANTHROPIC_AVAILABLE else '❌'}")
+        st.sidebar.markdown(f"- OpenAI GPT: {'✅' if OPENAI_AVAILABLE else '❌'}")
+        st.sidebar.markdown(f"- Cohere: {'✅' if COHERE_AVAILABLE else '❌'}")
+        st.sidebar.markdown(f"- Ollama: {'✅' if OLLAMA_AVAILABLE else '❌'}")
+        
+        if st.session_state.rag_system:
+            st.sidebar.success("🤖 RAG Active")
+        else:
+            st.sidebar.warning("🤖 RAG Inactive")
     
     # Run selected page
     pages[selected_page]()
